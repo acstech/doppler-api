@@ -1,11 +1,32 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/Shopify/sarama"
 	"os"
 	"os/signal"
+
+	"github.com/Shopify/sarama"
 )
+
+type EventReqObj struct {
+	ClientID string `json:"clientID"`
+	DateTime string `json:"dateTime"`
+	EventID  string `json:"eventID"`
+	Lat      string `json:"lat"`
+	Lon      string `json:"lng"`
+}
+
+type NewEventObj struct {
+	Longitude string `json:"lng"`
+	Latitude  string `json:"lat"`
+	Count     string `json:"count"`
+}
+
+var Events []EventReqObj
+
+//Events := make([]EventReqObj)
+var NewEvents []NewEventObj
 
 // Consume messages from queue
 func Consume() {
@@ -52,6 +73,10 @@ func Consume() {
 				fmt.Println(err)
 			// Print consumer messages
 			case msg := <-consumer.Messages():
+				var theEv EventReqObj
+				abc := []byte(msg.Value)
+				json.Unmarshal(abc, &theEv)
+				Events = append(Events, theEv)
 				fmt.Println(string(msg.Value))
 			// Service interruption
 			case <-signals:
@@ -63,9 +88,10 @@ func Consume() {
 
 	// If everything is done, close consumer
 	<-doneCh
-	fmt.Println("Consumption closed")
-}
-
-func main() {
-	Consume()
+	/*fmt.Println("Consumption closed")
+	i := 0
+	for i <= len(Events) {
+		fmt.Println(Events[i].ClientID)
+		i = i + 1
+	}*/
 }
