@@ -3,20 +3,11 @@ package main
 import (
 	"fmt"
 
-	//"github.com/influxdata/influxdb/client/v2"
 	cb "github.com/acstech/doppler-api/internal/couchbase"
 	fx "github.com/acstech/doppler-api/internal/influx"
 	client "github.com/influxdata/influxdb/client/v2"
 )
 
-/*
-func GetPoints(clnt client.Client, query string) (res []client.Result, err error) {
-	q := client.NewQuery(string, DB, "ms")
-  if response, err := clnt.Query(q); err == nil && response.Error() == nil {
-		fmt.Println(response.Results)
-	}
-	return res, nil
-}*/
 
 func main() {
 	//var clnt client.Client
@@ -53,4 +44,5 @@ func main() {
 		}
 	}
 
+	fmt.Println("Client exists and the eventID has been ensured.")
 }
