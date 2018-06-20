@@ -3,12 +3,13 @@ package liveupdate
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Shopify/sarama"
-	"github.com/gorilla/websocket"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+
+	"github.com/Shopify/sarama"
+	"github.com/gorilla/websocket"
 )
 
 var upgrader = websocket.Upgrader{
@@ -62,7 +63,12 @@ func dot(w http.ResponseWriter, r *http.Request) {
 // Send points to front end
 func SendPoint(point Point) {
 	for _, conn := range Websockets {
-		conn.WriteJSON(point)
+		//conn.WriteJSON(point)
+		conn.WriteJSON(Point{
+			Longitude: point.Longitude,
+			Latitude:  point.Latitude,
+			Count:     "3",
+		})
 	}
 }
 
@@ -116,6 +122,7 @@ func Consume() {
 				var point Point
 				json.Unmarshal(msg.Value, &point)
 				//fmt.Println("Lat: " + point.Latitude + " Lng: " + point.Longitude)
+				point.Count = "3"
 				SendPoint(point)
 			// Service interruption
 			case <-signals:
