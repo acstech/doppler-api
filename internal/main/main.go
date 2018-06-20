@@ -2,17 +2,25 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	cb "github.com/acstech/doppler-api/internal/couchbase"
 	fx "github.com/acstech/doppler-api/internal/influx"
 	client "github.com/influxdata/influxdb/client/v2"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println("Error loading .env file")
+		panic(err)
+	}
+	cbCon := os.Getenv("COUCHBASE_CONN")
 	//var clnt client.Client
 	//Consume()
 	cbConn := &cb.Couchbase{Doc: &cb.Doc{}}
-	cbConn.ConnectToCB("couchbase://validator:rotadilav@localhost/doppler")
+	cbConn.ConnectToCB(cbCon)
 	fmt.Println("Created the db connection.")
 	if !cbConn.ClientExists("test2") {
 		fmt.Print("error")
