@@ -8,12 +8,11 @@ import (
 	client "github.com/influxdata/influxdb/client/v2"
 )
 
-
 func main() {
 	//var clnt client.Client
 	//Consume()
 	cbConn := &cb.Couchbase{Doc: &cb.Doc{}}
-	cbConn.ConnectToCB("couchbase://validator:rotadilav@localhost/doppler1")
+	cbConn.ConnectToCB("couchbase://validator:rotadilav@localhost/doppler")
 	fmt.Println("Created the db connection.")
 	if !cbConn.ClientExists("test2") {
 		fmt.Print("error")
