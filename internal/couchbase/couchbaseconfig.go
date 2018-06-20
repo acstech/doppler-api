@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	//cb "github.com/acstech/doppler-events/internal/couchbase/couchbaseConn.go"
+
 	"github.com/couchbase/gocb"
 )
 

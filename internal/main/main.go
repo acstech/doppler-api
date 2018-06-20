@@ -4,23 +4,44 @@ import (
 	"fmt"
 
 	cb "github.com/acstech/doppler-api/internal/couchbase"
-	//"github.com/influxdata/influxdb/client/v2"
+	fx "github.com/acstech/doppler-api/internal/influx"
+	client "github.com/influxdata/influxdb/client/v2"
 )
-
-func filterByEvent(eventid string) error {
-	return nil
-}
 
 func main() {
 	//var clnt client.Client
 	//Consume()
 	cbConn := &cb.Couchbase{Doc: &cb.Doc{}}
-	cbConn.ConnectToCB("couchbase://validator:rotadilav@localhost/doppler1")
+	cbConn.ConnectToCB("couchbase://validator:rotadilav@localhost/doppler")
 	fmt.Println("Created the db connection.")
 	if !cbConn.ClientExists("test2") {
 		fmt.Print("error")
 	}
 	//ensure that the eventID exists
 	//cbConn.EventEnsure("test2", "")
+
+	c, err := client.NewHTTPClient(client.HTTPConfig{
+		Addr:     "http://localhost:8086",
+		Username: "root",
+		Password: "root",
+	})
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer c.Close()
+
+	fmt.Println("Client exists and the eventID has been ensured.")
+	//res, err := GetPoints(c, "select * from dopplerDataHistory")
+	res, err := fx.GetPoints(c, "select * from dopplerDataHistory")
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		i := 0
+		for i < len(res.ValArray) {
+			fmt.Println(res.ValArray[i])
+			i = i + 1
+		}
+	}
+
 	fmt.Println("Client exists and the eventID has been ensured.")
 }
