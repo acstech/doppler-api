@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 
 	"github.com/Shopify/sarama"
 	"github.com/gorilla/websocket"
@@ -18,8 +17,13 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-var Websockets map[string]*websocket.Conn
+var Websockets map[string]ConnectionStruct
 var count int = 0
+
+type ConnectionStruct struct {
+	addr          *websocket.Conn
+	filterSetting string
+}
 
 type Point struct {
 	Latitude  string `json:"lat"`
@@ -31,7 +35,7 @@ type Point struct {
 // Start a websocket connection for client
 func StartWebsocket() {
 	http.HandleFunc("/recieve/ws", dot)
-	Websockets = make(map[string]*websocket.Conn)
+	Websockets = make(map[string]ConnectionStruct)
 	fmt.Println("websocket running!")
 	http.ListenAndServe(":8000", nil)
 }
@@ -55,7 +59,7 @@ func dot(w http.ResponseWriter, r *http.Request) {
 		}
 	}(conn)
 
-	Websockets[strconv.Itoa(count)] = conn
+	// Websockets[strconv.Itoa(count)] = conn
 	count++
 	fmt.Println(count)
 }
@@ -64,7 +68,7 @@ func dot(w http.ResponseWriter, r *http.Request) {
 func SendPoint(point Point) {
 	for _, conn := range Websockets {
 		//conn.WriteJSON(point)
-		conn.WriteJSON(Point{
+		conn.addr.WriteJSON(Point{
 			Longitude: point.Longitude,
 			Latitude:  point.Latitude,
 			Count:     "3",
