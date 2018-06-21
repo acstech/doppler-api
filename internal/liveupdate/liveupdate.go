@@ -29,6 +29,8 @@ type Point struct {
 	Latitude  string `json:"lat"`
 	Longitude string `json:"lng"`
 	Count     string `json:"count"`
+	Client    string `json:"clientID"`
+	Event     string `json:"eventID"`
 	// Insert time eventually
 }
 
@@ -65,7 +67,7 @@ func dot(w http.ResponseWriter, r *http.Request) {
 }
 
 // Send points to front end
-func SendPoint(point Point) {
+func SendPoint(point Point, cs *websocket.Conn) {
 	for _, conn := range Websockets {
 		//conn.WriteJSON(point)
 		conn.addr.WriteJSON(Point{
@@ -122,12 +124,24 @@ func Consume() {
 			// Print consumer messages
 			case msg := <-consumer.Messages():
 				//fmt.Println(string(msg.Value))
-
 				var point Point
 				json.Unmarshal(msg.Value, &point)
+
 				//fmt.Println("Lat: " + point.Latitude + " Lng: " + point.Longitude)
-				point.Count = "3"
-				SendPoint(point)
+				// Check if ClientID exists
+				if _, contains := Websockets[point.Client]; contains {
+					// If it does create an instance of ConnectionStruct
+					cs := Websockets[point.Client]
+
+					if cs.filterSetting == "all" {
+						point.Count = "3"
+						SendPoint(point, cs.addr)
+						// Match filter setting to point event
+					} else if cs.filterSetting == point.Event {
+						point.Count = "3"
+						SendPoint(point, cs.addr)
+					}
+				}
 			// Service interruption
 			case <-signals:
 				fmt.Println("Interrupt detected")
