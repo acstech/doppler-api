@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 
-	cb "github.com/acstech/doppler-api/internal/couchbase"
 	fx "github.com/acstech/doppler-api/internal/influx"
 	client "github.com/influxdata/influxdb/client/v2"
 	"github.com/joho/godotenv"
@@ -14,9 +15,6 @@ import (
 
 func main() {
 
-	go liveupdate.InitWebsockets()
-	liveupdate.Consume()
-
 	//get CB config values from .env file
 	err := godotenv.Load()
 	if err != nil {
@@ -24,16 +22,6 @@ func main() {
 		panic(err)
 	}
 	cbCon := os.Getenv("COUCHBASE_CONN")
-
-	//create CB connection
-	cbConn := &cb.Couchbase{Doc: &cb.Doc{}}
-	cbConn.ConnectToCB(cbCon)
-	fmt.Println("Created the db connection.")
-	if !cbConn.ClientExists("client0") { //client0 is hard coded client ID
-		fmt.Print("error")
-	}
-	//ensure that the eventID exists
-	//cbConn.EventEnsure("test2", "")
 
 	// creates influx client
 	c, err := client.NewHTTPClient(client.HTTPConfig{
@@ -62,4 +50,12 @@ func main() {
 	}
 
 	fmt.Println("Client exists and the eventID has been ensured.")
+
+	//intialize websocket management and kafka consume
+	go liveupdate.InitWebsockets(cbCon)
+
+	//listen for calls to server
+	if err := http.ListenAndServe(":8000", nil); err != nil {
+		log.Fatal(err)
+	}
 }
