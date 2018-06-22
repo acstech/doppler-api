@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	cb "github.com/acstech/doppler-api/internal/couchbase"
+	//cb "github.com/acstech/doppler-api/internal/couchbase"
 	fx "github.com/acstech/doppler-api/internal/influx"
 	client "github.com/influxdata/influxdb/client/v2"
 	"github.com/joho/godotenv"
@@ -14,9 +14,6 @@ import (
 
 func main() {
 
-	go liveupdate.StartWebsocket()
-	liveupdate.Consume()
-
 	//get CB config values from .env file
 	err := godotenv.Load()
 	if err != nil {
@@ -25,13 +22,9 @@ func main() {
 	}
 	cbCon := os.Getenv("COUCHBASE_CONN")
 
-	//create CB connection
-	cbConn := &cb.Couchbase{Doc: &cb.Doc{}}
-	cbConn.ConnectToCB(cbCon)
-	fmt.Println("Created the db connection.")
-	if !cbConn.ClientExists("client0") { //client0 is hard coded client ID
-		fmt.Print("error")
-	}
+	go liveupdate.StartWebsocket(cbCon)
+	liveupdate.Consume()
+
 	//ensure that the eventID exists
 	//cbConn.EventEnsure("test2", "")
 
