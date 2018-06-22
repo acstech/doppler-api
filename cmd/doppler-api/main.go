@@ -14,7 +14,7 @@ import (
 
 func main() {
 
-	go liveupdate.StartWebsocket()
+	go liveupdate.InitWebsockets()
 	liveupdate.Consume()
 
 	//get CB config values from .env file

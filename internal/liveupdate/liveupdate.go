@@ -3,6 +3,7 @@ package liveupdate
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,11 +18,12 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-var Websockets map[string]ConnectionStruct
+var clientConnections map[string]map[*ConnWithParameters]struct{}
 var count int = 0
 
-type ConnectionStruct struct {
-	addr          *websocket.Conn
+type ConnWithParameters struct {
+	ws            *websocket.Conn
+	clientID      string
 	filterSetting string
 }
 
@@ -29,41 +31,64 @@ type Point struct {
 	Latitude  string `json:"lat"`
 	Longitude string `json:"lng"`
 	Count     string `json:"count"`
-	Client    string `json:"clientID"`
-	Event     string `json:"eventID"`
+	ClientID  string `json:"clientID"`
+	EventID   string `json:"eventID"`
 	// Insert time eventually
 }
 
-// Start a websocket connection for client
-func StartWebsocket() {
-	http.HandleFunc("/recieve/ws", dot)
-	Websockets = make(map[string]ConnectionStruct)
-	fmt.Println("websocket running!")
-	http.ListenAndServe(":8000", nil)
+// Initialize listening for websocket requests
+func InitWebsockets() {
+	//intialize connection management
+	clientConnections = make(map[string]map[*ConnWithParameters]struct{})
+	fmt.Println("Ready to Receive Websocket Requests")
+	//handle any websocket requests
+	http.HandleFunc("/receive/ws", createWS)
+	//listen for calls to server
+	if err := http.ListenAndServe(":8000", nil); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // Get a request for a point, then send coordinates back to front end
-func dot(w http.ResponseWriter, r *http.Request) {
+func createWS(w http.ResponseWriter, r *http.Request) {
 	// Upgrade HTTP server connection to the WebSocket protocol
-	var conn, err = upgrader.Upgrade(w, r, nil)
+	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		fmt.Println("Connection Upgrade Error")
 		fmt.Println(err)
+		ws.Close() //close the connection just in case
 		return
 	}
-	// Function to read any messages that are received
-	go func(conn *websocket.Conn) {
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				conn.Close()
-				return
-			}
-		}
-	}(conn)
+	fmt.Println("Connection Upgraded")
+	//Initialize conn with parameters
+	conn := &ConnWithParameters{
+		ws:            ws,
+		clientID:      "",
+		filterSetting: "",
+	}
 
-	// Websockets[strconv.Itoa(count)] = conn
-	count++
-	fmt.Println(count)
+	//now listen for messages for this created websocket
+	go readWS(conn)
+}
+
+func readWS(conn *ConnWithParameters) {
+	defer conn.ws.Close()
+	connected := false
+	// Function to read any messages that are received
+	for {
+		//read messages from client
+		_, msg, err := conn.ws.ReadMessage()
+		//check if client closed connection
+		if err != nil {
+			fmt.Println("Connection Closed by Client")
+			conn.ws.Close()
+			return
+		}
+		// if websocket hasnt been intialized
+		if connected == false {
+			clientConnections[msg.clientID]
+		}
+	}
 }
 
 // Send points to front end
