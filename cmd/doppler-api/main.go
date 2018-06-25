@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	//cb "github.com/acstech/doppler-api/internal/couchbase"
 	fx "github.com/acstech/doppler-api/internal/influx"
 	client "github.com/influxdata/influxdb/client/v2"
 	"github.com/joho/godotenv"
@@ -21,12 +20,6 @@ func main() {
 		panic(err)
 	}
 	cbCon := os.Getenv("COUCHBASE_CONN")
-
-	go liveupdate.StartWebsocket(cbCon)
-	liveupdate.Consume()
-
-	//ensure that the eventID exists
-	//cbConn.EventEnsure("test2", "")
 
 	// creates influx client
 	c, err := client.NewHTTPClient(client.HTTPConfig{
@@ -55,4 +48,8 @@ func main() {
 	}
 
 	fmt.Println("Client exists and the eventID has been ensured.")
+
+	//intialize websocket management and kafka consume
+	go liveupdate.InitWebsockets(cbCon)
+	liveupdate.Consume()
 }
