@@ -3,7 +3,6 @@ package liveupdate
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -52,11 +51,14 @@ type KafkaData struct {
 	// Insert time eventually
 }
 
-// Initialize listening for websocket requests
+// InitWebsockets starts listening for websocket requests and returns an error if any occur
 func InitWebsockets(cbConnection string) {
 	//create CB connection
 	cbConn = &couchbase.Couchbase{Doc: &couchbase.Doc{}}
-	cbConn.ConnectToCB(cbConnection)
+	err := cbConn.ConnectToCB(cbConnection)
+	if err != nil {
+		panic(fmt.Errorf("error connecting to couchbase: %v", err))
+	}
 	fmt.Println("Connected to Couchbase")
 	fmt.Println()
 
@@ -70,7 +72,7 @@ func InitWebsockets(cbConnection string) {
 
 	//listen for calls to server
 	if err := http.ListenAndServe(":8000", nil); err != nil {
-		log.Fatal(err)
+		panic(fmt.Errorf("error setting up the websocket endpoint: %v", err))
 	}
 }
 
@@ -93,11 +95,12 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 		filter:   make(map[string]struct{}),
 	}
 
+	errs := make(chan error, 1)
 	//now listen for messages for this created websocket
-	go readWS(conn)
+	go readWS(conn, &errs)
 }
 
-func readWS(conn *ConnWithParameters) {
+func readWS(conn *ConnWithParameters, errs *<-chan error) error {
 	defer conn.ws.Close()
 
 	//boolean used to keep up if this websocket has been connected
@@ -119,14 +122,13 @@ func readWS(conn *ConnWithParameters) {
 			}
 			fmt.Println("Removed Conn: ", clientConnections)
 			mutex.Unlock()
-			return
+			return nil
 		}
 		//declare message that will hold client message data
 		var message msg
 		//unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
-			fmt.Println("unmarshal error")
-			fmt.Println(err)
+			return fmt.Errorf("unmarshaling error: %v", err)
 		}
 
 		//WEBSOCKET MANAGEMENT
@@ -152,9 +154,12 @@ func readWS(conn *ConnWithParameters) {
 			//update connected to true
 			connected = true
 
-			//CHECK COUCHBASE
 			//check if client exists in couchbase
-			if cbConn.ClientExists(message.ClientID) {
+			exists, err := cbConn.ClientExists(message.ClientID)
+			if err != nil {
+				return fmt.Errorf("error connecting to couchbase: %v", err)
+			}
+			if exists {
 				//query couchbase for client's events
 				clientEvents := cbConn.Doc.Events
 				//add filters to connection
@@ -181,7 +186,7 @@ func readWS(conn *ConnWithParameters) {
 }
 
 // Consume messages from queue
-func Consume() {
+func Consume() error {
 	fmt.Println("Kafka Consume Started")
 	// Create a new configuration instance
 	config := sarama.NewConfig()
@@ -192,14 +197,15 @@ func Consume() {
 	// Create a new consumer
 	master, err := sarama.NewConsumer(brokers, config)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// Wait to close after everything is processed
-	defer func() {
+	defer func() error {
 		if err := master.Close(); err != nil {
-			panic(err)
+			return err
 		}
+		return nil
 	}()
 
 	// Topic to consume
@@ -209,7 +215,7 @@ func Consume() {
 	// A PartitionConsumer processes messages from a given topic and partition
 	consumer, err := master.ConsumePartition(topic, 0, sarama.OffsetNewest)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// Stop process if connection is interrupted
@@ -258,4 +264,5 @@ func Consume() {
 	// If everything is done, close consumer
 	<-doneCh
 	fmt.Println("Consumption closed")
+	return nil
 }
