@@ -3,7 +3,6 @@ package liveupdate
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -63,11 +62,14 @@ type KafkaData struct {
 	EventID   string `json:"eventID,omitempty"`
 }
 
-//InitWebsockets initializes websocket requests
+// InitWebsockets starts listening for websocket requests and returns an error if any occur
 func InitWebsockets(cbConnection string) {
 	//create CB connection
 	cbConn = &couchbase.Couchbase{Doc: &couchbase.Doc{}}
-	cbConn.ConnectToCB(cbConnection)
+	err := cbConn.ConnectToCB(cbConnection)
+	if err != nil {
+		panic(fmt.Errorf("error connecting to couchbase: %v", err))
+	}
 	fmt.Println("Connected to Couchbase")
 	fmt.Println()
 
@@ -81,7 +83,7 @@ func InitWebsockets(cbConnection string) {
 
 	//listen for calls to server
 	if err := http.ListenAndServe(":8000", nil); err != nil {
-		log.Fatal(err)
+		panic(fmt.Errorf("error setting up the websocket endpoint: %v", err))
 	}
 }
 
@@ -105,6 +107,7 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 		allFilters: make(map[string]struct{}),
 	}
 
+	errs := make(chan error, 1)
 	//now listen for messages for this created websocket
 	go readWS(conn)
 }
@@ -131,8 +134,7 @@ func readWS(conn *ConnWithParameters) {
 		var message msg
 		//unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
-			fmt.Println("unmarshal error")
-			fmt.Println(err)
+			fmt.Errorf("unmarshaling error: %v", err)
 		}
 
 		//WEBSOCKET MANAGEMENT
@@ -141,6 +143,25 @@ func readWS(conn *ConnWithParameters) {
 			conn = initConn(conn, message)
 			//update connected to true
 			connected = true
+
+			//check if client exists in couchbase
+			exists, err := cbConn.ClientExists(message.ClientID)
+			if err != nil {
+				fmt.Errorf("error connecting to couchbase: %v", err)
+			}
+			if exists {
+				//query couchbase for client's events
+				clientEvents := cbConn.Doc.Events
+				//add filters to connection
+				for _, event := range clientEvents {
+					conn.filter[event] = struct{}{}
+				}
+				//send event options to client
+				conn.ws.WriteJSON(clientEvents)
+			} else {
+				//if clientID does not exist in couchbase
+				conn.ws.WriteMessage(1, []byte("Couchbase Error: ClientID not found"))
+			}
 			//continue to next for loop iteration, skipping updating filters
 			continue
 		}
