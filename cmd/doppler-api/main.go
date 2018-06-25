@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 
 	fx "github.com/acstech/doppler-api/internal/influx"
@@ -53,9 +51,5 @@ func main() {
 
 	//intialize websocket management and kafka consume
 	go liveupdate.InitWebsockets(cbCon)
-
-	//listen for calls to server
-	if err := http.ListenAndServe(":8000", nil); err != nil {
-		log.Fatal(err)
-	}
+	liveupdate.Consume()
 }
