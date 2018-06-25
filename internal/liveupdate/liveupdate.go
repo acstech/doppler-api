@@ -155,7 +155,6 @@ func Consume() {
 	fmt.Println("Kafka Consume Started")
 	// Create a new configuration instance
 	config := sarama.NewConfig()
-
 	// Specify brokers address. 9092 is default
 	brokers := []string{"localhost:9092"}
 
@@ -237,6 +236,7 @@ func Consume() {
 			// Service interruption
 			case <-signals:
 				fmt.Println("Interrupt detected")
+				fmt.Println(count)
 				doneCh <- struct{}{}
 				break Loop
 			}
