@@ -23,8 +23,8 @@ var upgrader = websocket.Upgrader{
 
 var cbConn *couchbase.Couchbase                                   //used to hold couchbase connection
 var clientConnections map[string]map[*ConnWithParameters]struct{} //map used as connection hub, keeps up with clients and their respective connections and each connections settings
-var mutex = &sync.Mutex{}
-var count int = 0
+var mutex = &sync.Mutex{}                                         //mutex used for concurrent reading and writing
+var count int = 0                                                 //hard coded weight
 
 //used to add parameters to a gorilla's websocket.Conn
 type ConnWithParameters struct {
@@ -59,12 +59,6 @@ func InitWebsockets(cbConnection string) {
 	cbConn.ConnectToCB(cbConnection)
 	fmt.Println("Connected to Couchbase")
 	fmt.Println()
-
-	//start kafka consume
-	// go Consume()
-
-	//server index
-	// http.HandleFunc("/", serveIndex)
 
 	//intialize connection management
 	clientConnections = make(map[string]map[*ConnWithParameters]struct{})
@@ -110,11 +104,6 @@ func readWS(conn *ConnWithParameters) {
 	connected := false
 
 	// Function to read any messages that are received
-	// Stop process if connection is interrupted
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt)
-	doneCh := make(chan struct{})
-Loop:
 	for {
 		//read messages from client
 		_, msgBytes, err := conn.ws.ReadMessage()
@@ -176,32 +165,19 @@ Loop:
 				conn.ws.WriteJSON(clientEvents)
 			} else {
 				//if clientID does not exist in couchbase
-				conn.ws.WriteMessage(1, []byte("ClientID not found"))
+				conn.ws.WriteMessage(1, []byte("Couchbase Error: ClientID not found"))
 			}
 			//continue to next for loop iteration, skipping updating filters
 			continue
 		}
 
 		//UPDATE FILTERS
-		conn.filter = make(map[string]struct{})
+		conn.filter = make(map[string]struct{}) //reinitialize filters because receiving whole array of filters from client
+		//iterate through client message filter array and add the elements to the connection filter slice
 		for _, event := range message.Filter {
 			conn.filter[event] = struct{}{}
 		}
-		select {
-		case <-signals:
-			fmt.Println("Websocket Interrupt detected")
-			doneCh <- struct{}{}
-			break Loop
-		default:
-			continue
-		}
 	}
-	<-doneCh
-	fmt.Println("Consumption closed")
-}
-
-func serveIndex(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "index.html")
 }
 
 // Consume messages from queue
