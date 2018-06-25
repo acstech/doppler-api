@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
@@ -21,7 +20,8 @@ var upgrader = websocket.Upgrader{
 
 var cbConn *couchbase.Couchbase
 var clientConnections map[string]map[*ConnWithParameters]struct{}
-var mutex = &sync.RWMutex{}
+
+// var // = &sync.RW//{}
 var count int = 0
 
 type ConnWithParameters struct {
@@ -58,7 +58,7 @@ func InitWebsockets(cbConnection string) {
 	go Consume()
 
 	//server index
-	http.HandleFunc("/", serveIndex)
+	// http.HandleFunc("/", serveIndex)
 
 	//intialize connection management
 	clientConnections = make(map[string]map[*ConnWithParameters]struct{})
@@ -106,10 +106,10 @@ func readWS(conn *ConnWithParameters) {
 		if err != nil {
 			fmt.Println("Connection Closed by Client")
 			//REMOVE FROM MAP
-			mutex.Lock()
+			//.Lock()
 			delete(clientConnections[conn.clientID], conn)
 			fmt.Println(clientConnections)
-			mutex.Unlock()
+			//.Unlock()
 			return
 		}
 		var message msg
@@ -135,16 +135,16 @@ func readWS(conn *ConnWithParameters) {
 
 			//check if client is already connected on another websocket
 			//if client has not been connected, create new connection map
-			mutex.RLock()
+			//.RLock()
 			if _, contains := clientConnections[message.ClientID]; !contains {
 				clientConnections[message.ClientID] = make(map[*ConnWithParameters]struct{})
 			}
-			mutex.Unlock()
+			//.Unlock()
 			//add conn to map
-			mutex.Lock()
+			//.Lock()
 			clientConnections[message.ClientID][conn] = struct{}{}
 			fmt.Println("added client", clientConnections)
-			mutex.Unlock()
+			//.Unlock()
 			fmt.Println()
 			connected = true
 
@@ -152,8 +152,8 @@ func readWS(conn *ConnWithParameters) {
 			//check if client exists in couchbase
 			if cbConn.ClientExists(message.ClientID) {
 				//query couchbase for client's events
-				clientEvents := cbConn.Doc.Events
-				conn.ws.WriteJSON(clientEvents)
+				// clientEvents := cbConn.Doc.Events
+				// conn.ws.WriteJSON(clientEvents)
 			} else {
 				//if clientID does not exist in couchbase
 				conn.ws.WriteMessage(1, []byte("ClientID not found"))
@@ -228,24 +228,26 @@ func Consume() {
 
 				// fmt.Println("Lat: " + kafkaData.Latitude + " Lng: " + kafkaData.Longitude)
 				// Check if ClientID exists
-				mutex.RLock()
+				//.RLock()
 				if _, contains := clientConnections[kafkaData.ClientID]; contains {
 					// If client is connected, get map of connections
 					clientConnections := clientConnections[kafkaData.ClientID]
 					//iterate over client connections
 					for conn, _ := range clientConnections {
 						//if connection filter has KafkaData eventID, send data
-						if _, hasEvent := conn.filterSetting[kafkaData.EventID]; hasEvent {
-							conn.ws.WriteJSON(kafkaData)
-							//fmt.Println("Send Data to ", conn.clientID)
-						}
+						// if _, hasEvent := conn.filterSetting[kafkaData.EventID]; hasEvent {
+						conn.ws.WriteJSON(kafkaData)
+						fmt.Println(kafkaData)
+						//fmt.Println("Send Data to ", conn.clientID)
+						// }
 					}
 				}
-				mutex.Unlock()
+				//.Unlock()
 			// Service interruption
 			case <-signals:
 				fmt.Println("Interrupt detected")
 				doneCh <- struct{}{}
+				break
 			}
 		}
 	}()
