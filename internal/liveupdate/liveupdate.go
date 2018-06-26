@@ -39,6 +39,10 @@ type ConnWithParameters struct {
 	batchArray []KafkaData         //array used to hold data for batch sending
 }
 
+type BatchStruct struct {
+	BatchArray []KafkaData `json:"batchArray"`
+}
+
 //JSON format messages from client
 type msg struct {
 	ClientID string   `json:"clientID,omitempty"`
@@ -207,7 +211,11 @@ func intervalFlush(conn *ConnWithParameters) {
 }
 
 func flush(conn *ConnWithParameters) {
-	conn.ws.WriteJSON(conn.batchArray)
+	batch, err := json.Marshal(conn.batchArray)
+	if err != nil {
+		fmt.Println("batch marshal error")
+	}
+	conn.ws.WriteJSON(string(batch))
 	conn.batchArray = []KafkaData{}
 }
 
