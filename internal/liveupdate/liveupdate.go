@@ -92,9 +92,9 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 	// Upgrade HTTP server connection to the WebSocket protocol
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println("Connection Upgrade Error")
-		fmt.Println(err)
 		ws.Close() //close the connection just in case
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 - error upgrading connection"))
 		return
 	}
 	fmt.Println("NEW CONNECTION: Connection Upgraded, waiting for ClientID")

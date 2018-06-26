@@ -46,8 +46,6 @@ func main() {
 		}
 	}
 
-	fmt.Println("Client exists and the eventID has been ensured.")
-
 	//intialize websocket management and kafka consume
 	go liveupdate.InitWebsockets(cbCon)
 	err = liveupdate.Consume()
