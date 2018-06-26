@@ -94,13 +94,11 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 		clientID: "",
 		filter:   make(map[string]struct{}),
 	}
-
-	errs := make(chan error, 1)
 	//now listen for messages for this created websocket
-	go readWS(conn, &errs)
+	go readWS(conn)
 }
 
-func readWS(conn *ConnWithParameters, errs *<-chan error) error {
+func readWS(conn *ConnWithParameters) error {
 	defer conn.ws.Close()
 
 	//boolean used to keep up if this websocket has been connected
@@ -122,13 +120,12 @@ func readWS(conn *ConnWithParameters, errs *<-chan error) error {
 			}
 			fmt.Println("Removed Conn: ", clientConnections)
 			mutex.Unlock()
-			return nil
 		}
 		//declare message that will hold client message data
 		var message msg
 		//unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
-			return fmt.Errorf("unmarshaling error: %v", err)
+			fmt.Printf("unmarshaling error: %v\n", err)
 		}
 
 		//WEBSOCKET MANAGEMENT
@@ -157,7 +154,7 @@ func readWS(conn *ConnWithParameters, errs *<-chan error) error {
 			//check if client exists in couchbase
 			exists, err := cbConn.ClientExists(message.ClientID)
 			if err != nil {
-				return fmt.Errorf("error connecting to couchbase: %v", err)
+				panic(fmt.Errorf("error connecting to couchbase: %v", err))
 			}
 			if exists {
 				//query couchbase for client's events

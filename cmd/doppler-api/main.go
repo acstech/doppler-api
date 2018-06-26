@@ -16,8 +16,7 @@ func main() {
 	//get CB config values from .env file
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Error loading .env file")
-		panic(err)
+		panic(fmt.Errorf("error loading .env file: %v", err))
 	}
 	cbCon := os.Getenv("COUCHBASE_CONN")
 
@@ -28,7 +27,7 @@ func main() {
 		Password: "root",
 	})
 	if err != nil {
-		fmt.Println(err)
+		panic(fmt.Errorf("error connecting to influx: %v", err))
 	}
 	defer c.Close()
 
@@ -51,5 +50,8 @@ func main() {
 
 	//intialize websocket management and kafka consume
 	go liveupdate.InitWebsockets(cbCon)
-	liveupdate.Consume()
+	err = liveupdate.Consume()
+	if err != nil {
+		panic(fmt.Errorf("error connecting to kafka: %v", err))
+	}
 }
