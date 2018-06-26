@@ -106,8 +106,6 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 		filter:     make(map[string]struct{}),
 		allFilters: make(map[string]struct{}),
 	}
-
-	errs := make(chan error, 1)
 	//now listen for messages for this created websocket
 	go readWS(conn)
 }
