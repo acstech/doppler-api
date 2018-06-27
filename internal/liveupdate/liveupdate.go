@@ -129,6 +129,7 @@ func readWS(conn *ConnWithParameters) {
 
 		//declare message that will hold client message data
 		var message msg
+		var success bool
 		//unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
 			fmt.Println("unmarshal error")
@@ -138,9 +139,11 @@ func readWS(conn *ConnWithParameters) {
 		//WEBSOCKET MANAGEMENT
 		//If havent been connected, initialize all connection parameters, first message has to be clientID
 		if !connected {
-			conn = initConn(conn, message)
-			//update connected to true
-			connected = true
+			conn, success = initConn(conn, message)
+			if success {
+				//update connected to true
+				connected = true
+			}
 			//continue to next for loop iteration, skipping updating filters
 			continue
 		}
@@ -249,7 +252,7 @@ func Consume() {
 }
 
 //initConn initialize a ConnWithParameters' parameters based on the first message sent over the websocket
-func initConn(conn *ConnWithParameters, message msg) *ConnWithParameters {
+func initConn(conn *ConnWithParameters, message msg) (*ConnWithParameters, bool) {
 	//update conn with new parameters
 	//add clientID to connection
 	conn.clientID = message.ClientID
@@ -286,12 +289,16 @@ func initConn(conn *ConnWithParameters, message msg) *ConnWithParameters {
 		conn.ws.WriteJSON(clientEvents)
 	} else {
 		//if clientID does not exist in couchbase
-		conn.ws.WriteMessage(1, []byte("Couchbase Error: ClientID not found"))
+		var clientEvents []string
+		clientEvents = append(clientEvents, "ClientID not found")
+		conn.ws.WriteJSON(clientEvents)
+		closeConnection(conn)
+		return conn, false
 	}
 	//start checking if need to flush batch
 	go intervalFlush(conn)
 
-	return conn
+	return conn, true
 }
 
 //closeConnection removes the connection from the client, if the client has no connections, removes the client
