@@ -23,6 +23,8 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+var connErr clientError
+
 //GLOBAL VARIABLES
 var cbConn *couchbase.Couchbase                                   //used to hold couchbase connection
 var clientConnections map[string]map[*ConnWithParameters]struct{} //map used as connection hub, keeps up with clients and their respective connections and each connections settings
@@ -63,6 +65,10 @@ type KafkaData struct {
 	EventID   string `json:"eventID,omitempty"`
 }
 
+type clientError struct {
+	Error string `json:"Error"`
+}
+
 // InitWebsockets starts listening for websocket requests and returns an error if any occur
 func InitWebsockets(cbConnection string) {
 	//create CB connection
@@ -86,6 +92,7 @@ func InitWebsockets(cbConnection string) {
 	if err := http.ListenAndServe(":8000", nil); err != nil {
 		panic(fmt.Errorf("error setting up the websocket endpoint: %v", err))
 	}
+	connErr = clientError{}
 }
 
 // Get a request for a point, then send coordinates back to front end
@@ -125,22 +132,32 @@ func readWS(conn *ConnWithParameters) {
 		//check if client closed connection
 		if err != nil {
 			//if client closed connection, remove connetion from clientConnections
-			closeConnection(conn)
-			return //returns out of readWS
+			if connError(err, conn) {
+				return //returns out of readWS
+			}
 		}
 
 		//declare message that will hold client message data
 		var message msg
 		//unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
-			conn.ws.WriteMessage(1, []byte("Error: invalid input"))
-			continue
+			connErr.Error = "401 invalid input"
+			err = conn.ws.WriteJSON(connErr)
+			if err != nil {
+				if connError(err, conn) {
+					return //returns out of readWS
+				}
+				continue
+			}
 		}
 
 		//WEBSOCKET MANAGEMENT
 		//If havent been connected, initialize all connection parameters, first message has to be clientID
 		if !connected {
 			conn = initConn(conn, message)
+			if conn == nil {
+				return //there was an error creating the websocket because the connection closed
+			}
 			//update connected to true
 			connected = true
 
@@ -148,11 +165,29 @@ func readWS(conn *ConnWithParameters) {
 			exists, err := cbConn.ClientExists(message.ClientID)
 			if err != nil {
 				if err == gocb.ErrTimeout {
-					conn.ws.WriteMessage(1, []byte("Error: couchbase is currently down"))
+					connErr.Error = "501 unbale to validate clientID"
+					err = conn.ws.WriteJSON(connErr)
+					if err != nil {
+						if connError(err, conn) {
+							return //returns out of readWS
+						}
+					}
 				} else if err == gocb.ErrBusy {
-					conn.ws.WriteMessage(1, []byte("Error: couchbase is currently busy"))
+					connErr.Error = "502 unbale to validate clientID"
+					err = conn.ws.WriteJSON(connErr)
+					if err != nil {
+						if connError(err, conn) {
+							return //returns out of readWS
+						}
+					}
 				} else {
-					conn.ws.WriteMessage(1, []byte("Error:"+err.Error()))
+					connErr.Error = "503 unbale to validate clientID"
+					err = conn.ws.WriteJSON(connErr)
+					if err != nil {
+						if connError(err, conn) {
+							return //returns out of readWS
+						}
+					}
 				}
 				continue
 			}
@@ -164,10 +199,21 @@ func readWS(conn *ConnWithParameters) {
 					conn.filter[event] = struct{}{}
 				}
 				//send event options to client
-				conn.ws.WriteJSON(clientEvents)
+				err = conn.ws.WriteJSON(clientEvents)
+				if err != nil {
+					if connError(err, conn) {
+						return //returns out of readWS
+					}
+				}
 			} else {
 				//if clientID does not exist in couchbase
-				conn.ws.WriteMessage(1, []byte("Error: the ClientID is not valid"))
+				connErr.Error = "401 the ClientID is not valid"
+				err = conn.ws.WriteJSON(connErr)
+				if err != nil {
+					if connError(err, conn) {
+						return //returns out of readWS
+					}
+				}
 			}
 			//continue to next for loop iteration, skipping updating filters
 			continue
@@ -178,8 +224,8 @@ func readWS(conn *ConnWithParameters) {
 	}
 }
 
-// Consume consumes messages from queue
-func Consume() {
+// Consume consumes messages from a the queue and deals with errors as they occurr
+func Consume() error {
 	fmt.Println("Kafka Consume Started")
 	// Create a new configuration instance
 	config := sarama.NewConfig()
@@ -190,14 +236,12 @@ func Consume() {
 	// Create a new consumer
 	master, err := sarama.NewConsumer(brokers, config)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// Wait to close after everything is processed
 	defer func() {
-		if closeErr := master.Close(); err != nil {
-			panic(closeErr)
-		}
+		err = master.Close()
 	}()
 
 	// Topic to consume
@@ -207,7 +251,7 @@ func Consume() {
 	// A PartitionConsumer processes messages from a given topic and partition
 	consumer, err := master.ConsumePartition(topic, 0, sarama.OffsetNewest)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// Stop process if connection is interrupted
@@ -228,8 +272,11 @@ func Consume() {
 			case msg := <-consumer.Messages():
 				//initialize variable to hold data from kafka data
 				var kafkaData KafkaData
-				json.Unmarshal(msg.Value, &kafkaData) //unmarshal data to json
-
+				err = json.Unmarshal(msg.Value, &kafkaData) //unmarshal data to json
+				if err != nil {
+					fmt.Println(err)
+					continue // skip the rest of the checks because the unmarshalling failed
+				}
 				// Check if ClientID exists
 				mutex.Lock()
 				if _, contains := clientConnections[kafkaData.ClientID]; contains {
@@ -274,6 +321,7 @@ func Consume() {
 	// If everything is done, close consumer
 	<-doneCh
 	fmt.Println("Consumption closed")
+	return err
 }
 
 //initConn initialize a ConnWithParameters' parameters based on the first message sent over the websocket
@@ -299,8 +347,36 @@ func initConn(conn *ConnWithParameters, message msg) *ConnWithParameters {
 
 	//CHECK COUCHBASE for client's data
 	//check if client exists in couchbase
-	if cbConn.ClientExists(message.ClientID) {
-		//query couchbase for client's events
+	exists, err := cbConn.ClientExists(message.ClientID)
+	if err != nil {
+		if err == gocb.ErrTimeout {
+			connErr.Error = "501 unbale to validate clientID"
+			err = conn.ws.WriteJSON(connErr)
+			if err != nil {
+				if connError(err, conn) {
+					return nil //returns out of initConn
+				}
+			}
+		} else if err == gocb.ErrBusy {
+			connErr.Error = "502 unbale to validate clientID"
+			err = conn.ws.WriteJSON(connErr)
+			if err != nil {
+				if connError(err, conn) {
+					return nil //returns out of initConn
+				}
+			}
+		} else {
+			connErr.Error = "503 unbale to validate clientID"
+			err = conn.ws.WriteJSON(connErr)
+			if err != nil {
+				if connError(err, conn) {
+					return nil //returns out of initConn
+				}
+			}
+		}
+	}
+	if exists {
+		//get the already collected client's events
 		clientEvents := cbConn.Doc.Events
 
 		//add filters to connection
@@ -311,10 +387,19 @@ func initConn(conn *ConnWithParameters, message msg) *ConnWithParameters {
 			conn.allFilters[event] = struct{}{}
 		}
 		//send event options to client
-		conn.ws.WriteJSON(clientEvents)
+		err := conn.ws.WriteJSON(clientEvents)
+		if err != nil {
+			if connError(err, conn) {
+				return nil //returns out of initConn
+			}
+		}
 	} else {
 		//if clientID does not exist in couchbase
-		conn.ws.WriteMessage(1, []byte("Couchbase Error: ClientID not found"))
+		connErr.Error = "401 Invalid clientID"
+		err = conn.ws.WriteJSON(connErr)
+		if connError(err, conn) {
+			return nil //returns out of initConn
+		}
 	}
 	//start checking if need to flush batch
 	go intervalFlush(conn)
@@ -361,10 +446,14 @@ func flush(conn *ConnWithParameters) {
 	batch, marshalErr := json.Marshal(conn.batchArray) //marshal to type BatchStruct
 	if marshalErr != nil {
 		fmt.Println("batch marshal error")
+		conn.batchArray = []KafkaData{} //empty batch
+		return                          // do not try to flush because the data was not formatted correctly
 	}
-	writeErr := conn.ws.WriteJSON(string(batch)) //send batch to client
-	if writeErr != nil {
-		fmt.Println(writeErr)
+	err := conn.ws.WriteJSON(string(batch)) //send batch to client
+	if err != nil {
+		if connError(err, conn) {
+			return //returns out of flush
+		}
 	}
 	conn.batchArray = []KafkaData{} //empty batch
 }
@@ -392,6 +481,21 @@ func updateAvailableFilters(conn *ConnWithParameters, newFilter string) {
 	//send slice to client
 	err := conn.ws.WriteJSON(clientEvents)
 	if err != nil {
-		fmt.Println(err)
+		if connError(err, conn) {
+			return //returns out of updateAvailableFilters
+		}
 	}
+}
+
+// connError determines what to do for an error that occurs when writting to a client
+// err is the error struct to evaluate
+// conn is the connection to close if the connection to it has closed
+// returns true if the client has closed and false otherwise
+func connError(err error, conn *ConnWithParameters) bool {
+	if websocket.IsCloseError(err) {
+		closeConnection(conn)
+		return true
+	}
+	fmt.Println(err)
+	return false
 }
