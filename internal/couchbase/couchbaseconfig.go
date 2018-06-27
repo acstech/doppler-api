@@ -1,10 +1,12 @@
 // Couchbase Connector is used for connecting to and working with a couchbase bucket.
+
 package couchbase
 
 import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 
 	"github.com/couchbase/gocb"
 )
@@ -29,16 +31,16 @@ type Doc struct {
 // ClientExists determines whether or not a couchbase client exists or not.
 // clientID is the client's ID.
 // returns true if the document exists and false otherwise.
-func (c *Couchbase) ClientExists(clientID string) bool {
+func (c *Couchbase) ClientExists(clientID string) (bool, error) {
 	err := c.collectEvents(clientID)
 	if err != nil {
 		// check to see if the key exists
 		if gocb.IsKeyNotFoundError(err) {
-			return false
+			return false, nil
 		}
-		panic(err)
+		return false, err
 	}
-	return true
+	return true, nil
 }
 
 // collectEvents gets the list of eventID's for the client from the couchbase document.
@@ -51,7 +53,7 @@ func (c *Couchbase) collectEvents(clientID string) error {
 		return err
 	}
 	// get the Events array into a slice
-	docFrag.Content("Events", &c.Doc.Events) // Error, but why is Doc.Events null?
+	docFrag.Content("Events", &c.Doc.Events)
 	if err != nil {
 		return err
 	}
@@ -61,26 +63,33 @@ func (c *Couchbase) collectEvents(clientID string) error {
 // EventEnsure adds the provided event to the client's document if it is not already there.
 // clientID is the client's ID.
 // eventID is the client's event ID.
-func (c *Couchbase) EventEnsure(clientID, eventID string) {
-	_, err := c.Bucket.MutateIn(fmt.Sprintf("%s:client:%s", c.bucketName, clientID), 0, 0).ArrayAddUnique("Events", eventID, false).Execute()
-	if err != nil {
-		if err.Error() != "subdocument mutation 0 failed (given path already exists in the document)" {
-			panic(err)
+func (c *Couchbase) EventEnsure(clientID, eventID string) error {
+	sort.Sort(sort.StringSlice(c.Doc.Events))
+	// determine if the eventID is already in couchbase, if it is not then add it
+	if binarySearch(c.Doc.Events, eventID) == -1 {
+		_, err := c.Bucket.MutateIn(fmt.Sprintf("%s:client:%s", c.bucketName, clientID), 0, 0).ArrayAddUnique("Events", eventID, false).Execute()
+		if err != nil {
+			if err.Error() != "subdocument mutation 0 failed (given path already exists in the document)" {
+				return err
+			}
 		}
 	}
+
+	return nil
 }
 
 // CreateDocument creates a document for the client in the couchbase bucket.
 // clientID is the client's ID.
 // eventID is the client's event ID.
 // Note: this resets the Doc data of the connector.
-func (c *Couchbase) CreateDocument(clientID, eventID string) {
+func (c *Couchbase) CreateDocument(clientID, eventID string) error {
 	c.Doc.Events = append(c.Doc.Events, eventID)
-	_, err := c.Bucket.Upsert(fmt.Sprintf("doppler:client:%s", clientID), c.Doc.Events, 0)
+	_, err := c.Bucket.Upsert(fmt.Sprintf("%s:client:%s", c.bucketName, clientID), c.Doc.Events, 0)
 	c.Doc = &Doc{}
 	if err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
 // ConnectToCB connects to couchbase and sets up the client's bucket.
@@ -94,7 +103,7 @@ func (c *Couchbase) ConnectToCB(conn string) error {
 	}
 	// make sure that the url is going to couchbase
 	if u.Scheme != "couchbase" {
-		return errors.New("Scheme must be couchbase")
+		return errors.New("Scheme must be couchbase, verify .env is correct")
 	}
 	// make sure that a username and password exist, this is required by couchbase 5 and higher
 	username, password := "", ""
@@ -104,10 +113,9 @@ func (c *Couchbase) ConnectToCB(conn string) error {
 	}
 	// make sure that the bucket to connect to is specified
 	if u.Path == "" || u.Path == "/" {
-		return errors.New("Bucket not specified")
+		return errors.New("Bucket not specified, verify .env is correct")
 	}
 	c.bucketName = u.Path[1:]
-
 	// get the proper connection format (couchbase//host) and connect to the cluster
 	spec := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 	cluster, err := gocb.Connect(spec)
@@ -121,4 +129,24 @@ func (c *Couchbase) ConnectToCB(conn string) error {
 		return err
 	}
 	return nil
+}
+
+// binarySearch does a binary search and determines if an element exists inside of a slice or not
+// modified version of https://stackoverflow.com/questions/43073681/golang-binary-search
+func binarySearch(a []string, search string) (result int) {
+	mid := len(a) / 2
+	switch {
+	case len(a) == 0:
+		result = -1 // not found
+	case a[mid] > search:
+		result = binarySearch(a[:mid], search)
+	case a[mid] < search:
+		result = binarySearch(a[mid+1:], search)
+		if result != -1 {
+			result += mid + 1
+		}
+	default: // a[mid] == search
+		result = mid // found
+	}
+	return
 }
