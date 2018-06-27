@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,10 +26,10 @@ var upgrader = websocket.Upgrader{
 var cbConn *couchbase.Couchbase                                   //used to hold couchbase connection
 var clientConnections map[string]map[*ConnWithParameters]struct{} //map used as connection hub, keeps up with clients and their respective connections and each connections settings
 var mutex = &sync.RWMutex{}                                       //mutex used for concurrent reading and writing
-var count int = 0                                                 //hard coded weight
-var maxBatchSize = 20                                             //max size of data batch that is sent
+var count int64 = 5                                               //hard coded weight
+var maxBatchSize = 50                                             //max size of data batch that is sent
 var minBatchSize = 1                                              //min size of data batch that is sent
-var batchInterval = time.Duration(200 * time.Millisecond)         //millisecond interval that data is sent
+var batchInterval = time.Duration(1000 * time.Millisecond)        //millisecond interval that data is sent
 
 //used to add parameters to a gorilla's websocket.Conn
 type ConnWithParameters struct {
@@ -279,8 +280,7 @@ func Consume() {
 					for conn := range clientConnections {
 						// Check if consume message has a different filter than allfilters
 						if _, contains := conn.allFilters[kafkaData.EventID]; !contains {
-							fmt.Println("Updating filter")
-							updateFilter(conn)
+							updateFilter(conn, kafkaData.EventID)
 						}
 
 						//if connection filter has KafkaData eventID, send data
@@ -294,9 +294,10 @@ func Consume() {
 							//add KafkaData of just eventID, lat, lng to batchArray
 							// conn.batchArray = append(conn.batchArray, kafkaData)
 							conn.batchArray = append(conn.batchArray, KafkaData{
-								EventID:   kafkaData.EventID,
+								// EventID:   kafkaData.EventID,
 								Latitude:  kafkaData.Latitude,
 								Longitude: kafkaData.Longitude,
+								Count:     strconv.FormatInt(count, 10),
 							})
 						}
 					}
@@ -317,14 +318,12 @@ func Consume() {
 }
 
 // Update filter once there is a change
-func updateFilter(conn *ConnWithParameters) {
-	// Empty map
-	conn.allFilters = make(map[string]struct{})
-	// query couchbase for client's events
-	clientEvents := cbConn.Doc.Events
-	// Iterate through all events in couchbase
-	for _, event := range clientEvents {
-		conn.allFilters[event] = struct{}{}
+func updateFilter(conn *ConnWithParameters, newFilter string) {
+	// Add new filter to map
+	conn.allFilters[newFilter] = struct{}{}
+	var clientEvents []string
+	for key, _ := range conn.allFilters {
+		clientEvents = append(clientEvents, key)
 	}
 	err := conn.ws.WriteJSON(clientEvents)
 	if err != nil {
