@@ -12,6 +12,7 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
+	"github.com/couchbase/gocb"
 	"github.com/gorilla/websocket"
 )
 
@@ -132,7 +133,8 @@ func readWS(conn *ConnWithParameters) {
 		var message msg
 		//unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
-			fmt.Errorf("unmarshaling error: %v", err)
+			conn.ws.WriteMessage(1, []byte("Error: invalid input"))
+			continue
 		}
 
 		//WEBSOCKET MANAGEMENT
@@ -145,7 +147,14 @@ func readWS(conn *ConnWithParameters) {
 			//check if client exists in couchbase
 			exists, err := cbConn.ClientExists(message.ClientID)
 			if err != nil {
-				fmt.Errorf("error connecting to couchbase: %v", err)
+				if err == gocb.ErrTimeout {
+					conn.ws.WriteMessage(1, []byte("Error: couchbase is currently down"))
+				} else if err == gocb.ErrBusy {
+					conn.ws.WriteMessage(1, []byte("Error: couchbase is currently busy"))
+				} else {
+					conn.ws.WriteMessage(1, []byte("Error:"+err.Error()))
+				}
+				continue
 			}
 			if exists {
 				//query couchbase for client's events
@@ -158,7 +167,7 @@ func readWS(conn *ConnWithParameters) {
 				conn.ws.WriteJSON(clientEvents)
 			} else {
 				//if clientID does not exist in couchbase
-				conn.ws.WriteMessage(1, []byte("Couchbase Error: ClientID not found"))
+				conn.ws.WriteMessage(1, []byte("Error: the ClientID is not valid"))
 			}
 			//continue to next for loop iteration, skipping updating filters
 			continue
