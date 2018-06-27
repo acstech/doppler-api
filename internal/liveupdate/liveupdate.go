@@ -137,6 +137,7 @@ func readWS(conn *ConnWithParameters) {
 
 		//declare message that will hold client message data
 		var message msg
+		var success bool
 		//unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
 			connErr.Error = "401: Invalid input"
@@ -149,9 +150,11 @@ func readWS(conn *ConnWithParameters) {
 		//WEBSOCKET MANAGEMENT
 		//If havent been connected, initialize all connection parameters, first message has to be clientID
 		if !connected {
-			conn = initConn(conn, message)
-			//update connected to true
-			connected = true
+			conn, success = initConn(conn, message)
+			if success {
+				//update connected to true
+				connected = true
+			}
 			//continue to next for loop iteration, skipping updating filters
 			continue
 		}
@@ -166,7 +169,6 @@ func Consume() error {
 	fmt.Println("Kafka Consume Started")
 	// Create a new configuration instance
 	config := sarama.NewConfig()
-
 	// Specify brokers address. 9092 is default
 	brokers := []string{"localhost:9092"}
 
@@ -246,6 +248,7 @@ func Consume() error {
 			// Service interruption
 			case <-signals:
 				fmt.Println("Interrupt detected")
+				fmt.Println(count)
 				doneCh <- struct{}{}
 				break Loop
 			}
@@ -259,7 +262,7 @@ func Consume() error {
 }
 
 //initConn initialize a ConnWithParameters' parameters based on the first message sent over the websocket
-func initConn(conn *ConnWithParameters, message msg) *ConnWithParameters {
+func initConn(conn *ConnWithParameters, message msg) (*ConnWithParameters, bool) {
 	//update conn with new parameters
 	//add clientID to connection
 	conn.clientID = message.ClientID
@@ -329,7 +332,7 @@ func initConn(conn *ConnWithParameters, message msg) *ConnWithParameters {
 	//start checking if need to flush batch
 	go intervalFlush(conn)
 
-	return conn
+	return conn, true
 }
 
 //closeConnection removes the connection from the client, if the client has no connections, removes the client
