@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
@@ -23,15 +25,23 @@ var upgrader = websocket.Upgrader{
 
 var cbConn *couchbase.Couchbase                                   //used to hold couchbase connection
 var clientConnections map[string]map[*ConnWithParameters]struct{} //map used as connection hub, keeps up with clients and their respective connections and each connections settings
-var mutex = &sync.Mutex{}                                         //mutex used for concurrent reading and writing
-var count int = 0                                                 //hard coded weight
+var mutex = &sync.RWMutex{}                                       //mutex used for concurrent reading and writing
+var count int64 = 5                                               //hard coded weight
+var maxBatchSize = 50                                             //max size of data batch that is sent
+var minBatchSize = 1                                              //min size of data batch that is sent
+var batchInterval = time.Duration(1000 * time.Millisecond)        //millisecond interval that data is sent
 
 //used to add parameters to a gorilla's websocket.Conn
 type ConnWithParameters struct {
-	ws       *websocket.Conn     //keeps up with connection identifier
-	clientID string              //the clientID associated with this connection
-	filter   map[string]struct{} //a map of the events that the client currently wants to see
-	// allFilters map[string]struct{} //a map of all the events that the client has available
+	ws         *websocket.Conn     //keeps up with connection identifier
+	clientID   string              //the clientID associated with this connection
+	filter     map[string]struct{} //a map of the events that the client currently wants to see
+	allFilters map[string]struct{} //a map of all the events that the client has available
+	batchArray []KafkaData         //array used to hold data for batch sending
+}
+
+type BatchStruct struct {
+	BatchArray []KafkaData `json:"batchArray"`
 }
 
 //JSON format messages from client
@@ -44,11 +54,11 @@ type msg struct {
 
 //JSON format messages from Kafka
 type KafkaData struct {
-	Latitude  string `json:"lat"`
-	Longitude string `json:"lng"`
-	Count     string `json:"count"`
-	ClientID  string `json:"clientID"`
-	EventID   string `json:"eventID"`
+	Latitude  string `json:"lat,omitempty"`
+	Longitude string `json:"lng,omitempty"`
+	Count     string `json:"count,omitempty"`
+	ClientID  string `json:"clientID,omitempty"`
+	EventID   string `json:"eventID,omitempty"`
 	// Insert time eventually
 }
 
@@ -88,9 +98,10 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 
 	//Initialize conn with parameters
 	conn := &ConnWithParameters{
-		ws:       ws,
-		clientID: "",
-		filter:   make(map[string]struct{}),
+		ws:         ws,
+		clientID:   "",
+		filter:     make(map[string]struct{}),
+		allFilters: make(map[string]struct{}),
 	}
 
 	//now listen for messages for this created websocket
@@ -130,7 +141,7 @@ func readWS(conn *ConnWithParameters) {
 		}
 
 		//WEBSOCKET MANAGEMENT
-		// if websocket hasnt been added to clientConnections map
+		//Initialize all websocket parameters
 		if !connected {
 			//update conn with new parameters
 			//add clientID to connection
@@ -157,9 +168,13 @@ func readWS(conn *ConnWithParameters) {
 			if cbConn.ClientExists(message.ClientID) {
 				//query couchbase for client's events
 				clientEvents := cbConn.Doc.Events
+
 				//add filters to connection
 				for _, event := range clientEvents {
+					//add live filters
 					conn.filter[event] = struct{}{}
+					// Add event to allfilters map
+					conn.allFilters[event] = struct{}{}
 				}
 				//send event options to client
 				conn.ws.WriteJSON(clientEvents)
@@ -167,6 +182,8 @@ func readWS(conn *ConnWithParameters) {
 				//if clientID does not exist in couchbase
 				conn.ws.WriteMessage(1, []byte("Couchbase Error: ClientID not found"))
 			}
+			//start writing Function
+			go intervalFlush(conn)
 			//continue to next for loop iteration, skipping updating filters
 			continue
 		}
@@ -178,6 +195,29 @@ func readWS(conn *ConnWithParameters) {
 			conn.filter[event] = struct{}{}
 		}
 	}
+}
+func intervalFlush(conn *ConnWithParameters) {
+	var flushTime time.Time
+	for {
+		if time.Now().Sub(flushTime) >= batchInterval {
+			if len(conn.batchArray) > minBatchSize {
+				// fmt.Println("Interval Flush")
+				mutex.Lock()
+				flush(conn)
+				mutex.Unlock()
+				flushTime = time.Now()
+			}
+		}
+	}
+}
+
+func flush(conn *ConnWithParameters) {
+	batch, err := json.Marshal(conn.batchArray)
+	if err != nil {
+		fmt.Println("batch marshal error")
+	}
+	conn.ws.WriteJSON(string(batch))
+	conn.batchArray = []KafkaData{}
 }
 
 // Consume messages from queue
@@ -237,11 +277,28 @@ func Consume() {
 					// If client is connected, get map of connections
 					clientConnections := clientConnections[kafkaData.ClientID]
 					//iterate over client connections
-					for conn, _ := range clientConnections {
-						//TODO Update allFilters if find a new filter and send new filter options to front end
+					for conn := range clientConnections {
+						// Check if consume message has a different filter than allfilters
+						if _, contains := conn.allFilters[kafkaData.EventID]; !contains {
+							updateFilter(conn, kafkaData.EventID)
+						}
+
 						//if connection filter has KafkaData eventID, send data
 						if _, hasEvent := conn.filter[kafkaData.EventID]; hasEvent {
-							conn.ws.WriteJSON(kafkaData)
+							//check if batchArray is full, if so, flush
+
+							if len(conn.batchArray) == maxBatchSize {
+								// fmt.Println("Size Flush")
+								flush(conn)
+							}
+							//add KafkaData of just eventID, lat, lng to batchArray
+							// conn.batchArray = append(conn.batchArray, kafkaData)
+							conn.batchArray = append(conn.batchArray, KafkaData{
+								// EventID:   kafkaData.EventID,
+								Latitude:  kafkaData.Latitude,
+								Longitude: kafkaData.Longitude,
+								Count:     strconv.FormatInt(count, 10),
+							})
 						}
 					}
 				}
@@ -258,4 +315,18 @@ func Consume() {
 	// If everything is done, close consumer
 	<-doneCh
 	fmt.Println("Consumption closed")
+}
+
+// Update filter once there is a change
+func updateFilter(conn *ConnWithParameters, newFilter string) {
+	// Add new filter to map
+	conn.allFilters[newFilter] = struct{}{}
+	var clientEvents []string
+	for key, _ := range conn.allFilters {
+		clientEvents = append(clientEvents, key)
+	}
+	err := conn.ws.WriteJSON(clientEvents)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
