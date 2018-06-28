@@ -27,7 +27,7 @@ var upgrader = websocket.Upgrader{
 var cbConn *couchbase.Couchbase                                   //used to hold couchbase connection
 var clientConnections map[string]map[*ConnWithParameters]struct{} //map used as connection hub, keeps up with clients and their respective connections and each connections settings
 var mutex = &sync.RWMutex{}                                       //mutex used for concurrent reading and writing
-var count int64 = 5                                               //hard coded weight
+var count int64                                                   //hard coded weight
 var maxBatchSize = 50                                             //max size of data batch that is sent
 var minBatchSize = 1                                              //min size of data batch that is sent
 var batchInterval = time.Duration(1000 * time.Millisecond)        //millisecond interval that data is sent
@@ -38,13 +38,13 @@ type ConnWithParameters struct {
 	clientID   string              //the clientID associated with this connection
 	filter     map[string]struct{} //a map of the events that the client currently wants to see
 	allFilters map[string]struct{} //a map of all the events that the client has available
-	batchArray []KafkaData         //array used to hold data for batch sending
+	batchMap   map[bucket]point    //map that holds buckets of points
 }
 
-//BatchStruct is the JSON format for batch
-type BatchStruct struct {
-	BatchArray []KafkaData `json:"batchArray"`
-}
+// //BatchStruct is the JSON format for batch
+// type BatchStruct struct {
+// 	BatchArray []KafkaData `json:"batchArray"`
+// }
 
 //msg is the JSON format messages from client
 type msg struct {
@@ -58,9 +58,21 @@ type msg struct {
 type KafkaData struct {
 	Latitude  string `json:"lat,omitempty"`
 	Longitude string `json:"lng,omitempty"`
-	Count     string `json:"count,omitempty"`
 	ClientID  string `json:"clientID,omitempty"`
 	EventID   string `json:"eventID,omitempty"`
+}
+
+//point is the struct to hold data for points
+type point struct {
+	Latitude  string `json:"lat,omitempty"`
+	Longitude string `json:"lng,omitempty"`
+	Count     string `json:"count,omitempty"`
+}
+
+//bucket is the hash for grouping points together
+type bucket struct {
+	Latitude  string `json:"lat"`
+	Longitude string `json:"lng"`
 }
 
 //InitWebsockets initializes websocket requests
@@ -218,13 +230,12 @@ func Consume() {
 						if _, hasEvent := conn.filter[kafkaData.EventID]; hasEvent {
 							//check if batchArray is full, if so, flush
 
-							if len(conn.batchArray) == maxBatchSize {
+							if len(conn.batchMap) == maxBatchSize {
 								// fmt.Println("Size Flush")
 								flush(conn)
 							}
 							//add KafkaData of just eventID, lat, lng to batchArray
-							// conn.batchArray = append(conn.batchArray, kafkaData)
-							conn.batchArray = append(conn.batchArray, KafkaData{
+							bucket(conn, point{
 								// EventID:   kafkaData.EventID,
 								Latitude:  kafkaData.Latitude,
 								Longitude: kafkaData.Longitude,
