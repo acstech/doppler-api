@@ -71,7 +71,7 @@ type KafkaData struct {
 
 //InitWebsockets initializes websocket requests
 func InitWebsockets(cbConnection string) {
-	cbConn = &couchbase.Couchbase{Doc: &couchbase.Doc{}}
+	cbConn = &couchbase.Couchbase{}
 	err := cbConn.ConnectToCB(cbConnection)
 	if err != nil {
 		panic(fmt.Errorf("error connecting to couchbase: %v", err))
@@ -205,14 +205,16 @@ func Consume() error {
 		for {
 			select {
 			// In case of error
-			case err := <-consumer.Errors():
+			case err = <-consumer.Errors():
 				fmt.Println(err)
 			// Print consumer messages
 			case msg := <-consumer.Messages():
 				//initialize variable to hold data from kafka data
 				var kafkaData KafkaData
-				json.Unmarshal(msg.Value, &kafkaData) //unmarshal data to json
-
+				err = json.Unmarshal(msg.Value, &kafkaData) //unmarshal data to json
+				if err != nil {
+					fmt.Println(err)
+				}
 				// Check if ClientID exists
 				mutex.Lock()
 				if _, contains := clientConnections[kafkaData.ClientID]; contains {
@@ -284,7 +286,7 @@ func initConn(conn *ConnWithParameters, message msg) (*ConnWithParameters, bool)
 
 	//CHECK COUCHBASE for client's data
 	//check if client exists in couchbase
-	exists, err := cbConn.ClientExists(message.ClientID)
+	exists, document, err := cbConn.ClientExists(message.ClientID)
 	if err != nil {
 		if err == gocb.ErrTimeout {
 			connErr.Error = "501: Unable to validate clientID"
@@ -310,7 +312,7 @@ func initConn(conn *ConnWithParameters, message msg) (*ConnWithParameters, bool)
 	}
 	if exists {
 		//query couchbase for client's events
-		clientEvents := cbConn.Doc.Events
+		clientEvents := document.Events
 
 		//add filters to connection
 		for _, event := range clientEvents {
