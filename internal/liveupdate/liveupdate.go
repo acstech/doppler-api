@@ -12,8 +12,8 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
-	"github.com/gorilla/websocket"
 	"github.com/couchbase/gocb"
+	"github.com/gorilla/websocket"
 )
 
 //upgrader var used to set parameters for websocket connections
@@ -180,7 +180,7 @@ func Consume() error {
 
 	// Wait to close after everything is processed
 	defer func() {
-		err = master.Close();
+		err = master.Close()
 	}()
 
 	// Topic to consume
@@ -298,12 +298,15 @@ func initConn(conn *ConnWithParameters, message msg) (*ConnWithParameters, bool)
 			if err != nil {
 				fmt.Println(err)
 			}
+		} else {
+			connErr.Error = "503: Unable to validate clientID"
+			err = conn.ws.WriteJSON(connErr)
+			if err != nil {
+				fmt.Println(err)
+			}
 		}
-		connErr.Error = "503: Unable to validate clientID"
-		err = conn.ws.WriteJSON(connErr)
-		if err != nil {
-			fmt.Println(err)
-		}
+		closeConnection(conn)
+		return conn, false
 	}
 	if exists {
 		//query couchbase for client's events
@@ -328,6 +331,8 @@ func initConn(conn *ConnWithParameters, message msg) (*ConnWithParameters, bool)
 		if err != nil {
 			fmt.Println(err)
 		}
+		closeConnection(conn)
+		return conn, false
 	}
 	//start checking if need to flush batch
 	go intervalFlush(conn)
