@@ -39,7 +39,7 @@ var batchInterval = time.Duration(1000 * time.Millisecond) //millisecond interva
 var connErr clientError
 
 //bucketing variables
-var truncateSize = 2 //determine the number of decimal places we truncate our points to
+var truncateSize = 1 //determine the number of decimal places we truncate our points to
 var count int64
 var zeroTest string
 
@@ -486,12 +486,13 @@ func bucketPoints(conn *ConnWithParameters, rawPt point) {
 // trucate takes a string and changes its length
 func truncate(s string) string {
 	if len(s) < truncateSize {
-		//padding
+		//padding if smaller
 		for i := len(s); i < truncateSize; i++ {
 			s += "0"
 		}
 		return s
 	}
+	//truncate
 	return s[0:truncateSize]
 }
 
