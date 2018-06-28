@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,10 +29,11 @@ var cbConn *couchbase.Couchbase                                   //used to hold
 var clientConnections map[string]map[*ConnWithParameters]struct{} //map used as connection hub, keeps up with clients and their respective connections and each connections settings
 var mutex = &sync.RWMutex{}                                       //mutex used for concurrent reading and writing
 var count int64                                                   //hard coded weight
-var maxBatchSize = 50                                             //max size of data batch that is sent
+var maxBatchSize = 10                                             //max size of data batch that is sent
 var minBatchSize = 1                                              //min size of data batch that is sent
-var batchInterval = time.Duration(1000 * time.Millisecond)        //millisecond interval that data is sent
+var batchInterval = time.Duration(2000 * time.Millisecond)        //millisecond interval that data is sent
 var connErr clientError
+var truncateSize = 0 //determine the number of decimal places we truncate our points to
 
 // clientError will be the error message that is sent to the frontend if any occurr
 type clientError struct {
@@ -44,13 +46,13 @@ type ConnWithParameters struct {
 	clientID   string              //the clientID associated with this connection
 	filter     map[string]struct{} //a map of the events that the client currently wants to see
 	allFilters map[string]struct{} //a map of all the events that the client has available
-	batchMap   map[bucket]point    //map that holds buckets of points
+	batchMap   map[string]point    //map that holds buckets of points
 }
 
-// //BatchStruct is the JSON format for batch
-// type BatchStruct struct {
-// 	BatchArray []KafkaData `json:"batchArray"`
-// }
+//BatchStruct is the JSON format for batch
+type BatchStruct struct {
+	BatchMap map[string]string `json:"batchMap"`
+}
 
 //msg is the JSON format messages from client
 type msg struct {
@@ -73,12 +75,6 @@ type point struct {
 	Latitude  string `json:"lat,omitempty"`
 	Longitude string `json:"lng,omitempty"`
 	Count     string `json:"count,omitempty"`
-}
-
-//bucket is the hash for grouping points together
-type bucket struct {
-	Latitude  string `json:"lat"`
-	Longitude string `json:"lng"`
 }
 
 //InitWebsockets initializes websocket requests
@@ -124,6 +120,7 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 		clientID:   "",
 		filter:     make(map[string]struct{}),
 		allFilters: make(map[string]struct{}),
+		batchMap:   make(map[string]point),
 	}
 	//now listen for messages for this created websocket
 	go readWS(conn)
@@ -248,7 +245,7 @@ func Consume() error {
 								flush(conn)
 							}
 							//add KafkaData of just eventID, lat, lng to batchArray
-							bucket(conn, point{
+							bucketPoints(conn, point{
 								// EventID:   kafkaData.EventID,
 								Latitude:  kafkaData.Latitude,
 								Longitude: kafkaData.Longitude,
@@ -376,7 +373,7 @@ func intervalFlush(conn *ConnWithParameters) {
 		//see if current time minus last flush time is greater than or equal to the set interval
 		//sub returns type Duration, batchInterval is of type Duration
 		if time.Now().Sub(flushTime) >= batchInterval {
-			if len(conn.batchArray) > minBatchSize {
+			if len(conn.batchMap) >= minBatchSize {
 				// fmt.Println("Interval Flush")
 				mutex.Lock()
 				flush(conn)
@@ -389,15 +386,17 @@ func intervalFlush(conn *ConnWithParameters) {
 
 //flush marshals the batch to json, sends the batch over the conn's websocket, and emptys the batch
 func flush(conn *ConnWithParameters) {
-	batch, marshalErr := json.Marshal(conn.batchArray) //marshal to type BatchStruct
+	batch, marshalErr := json.Marshal(conn.batchMap) //marshal to type BatchStruct
+	// fmt.Println(batch)
 	if marshalErr != nil {
 		fmt.Println("batch marshal error")
+		fmt.Println(marshalErr)
 	}
 	writeErr := conn.ws.WriteJSON(string(batch)) //send batch to client
 	if writeErr != nil {
 		fmt.Println(writeErr)
 	}
-	conn.batchArray = []KafkaData{} //empty batch
+	conn.batchMap = make(map[string]point) //empty batch
 }
 
 //updateLiveFilters removes the current filters and sets filter equal to the new filters found in the message
@@ -425,4 +424,53 @@ func updateAvailableFilters(conn *ConnWithParameters, newFilter string) {
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+// bucketPoints takes a connection and a point and puts them in the batch of buckets as necessary
+func bucketPoints(conn *ConnWithParameters, rawPt point) {
+	// Truncate each item in batch
+	// Split float by decimal
+	latSlice := strings.SplitAfter(rawPt.Latitude, ".")
+	lngSlice := strings.SplitAfter(rawPt.Longitude, ".")
+
+	// Truncate second half of slices
+	latSlice[1] = truncate(latSlice[1], truncateSize)
+	lngSlice[1] = truncate(lngSlice[1], truncateSize)
+	// Combine the split strings together
+	lat := strings.Join(latSlice, "")
+	lng := strings.Join(lngSlice, "")
+
+	//create bucket
+	bucket := lat + ":" + lng
+	//create point
+	pt := point{
+		Latitude:  lat,
+		Longitude: lng,
+		Count:     strconv.Itoa(1),
+	}
+
+	// bucket
+	// check if bucket exists
+	// if it does exists, increase the count
+	if _, contains := conn.batchMap[bucket]; contains {
+		value := conn.batchMap[bucket]                      //get the value of the bucket
+		count, err := strconv.ParseInt(value.Count, 10, 64) // get the count from value
+		if err != nil {
+			fmt.Println("bucketPoint parse error")
+			fmt.Println(err)
+		}
+		count++ // increase the count
+		value.Count = strconv.Itoa(int(count))
+		conn.batchMap[bucket] = value
+	} else { //otherwise, add the point with the count
+		conn.batchMap[bucket] = pt
+	}
+}
+
+// trucate takes a string and changes its length
+func truncate(s string, size int) string {
+	if len(s) <= size {
+		return s
+	}
+	return s[0:size]
 }
