@@ -25,15 +25,23 @@ var upgrader = websocket.Upgrader{
 }
 
 //GLOBAL VARIABLES
+//general variables
 var cbConn *couchbase.Couchbase                                   //used to hold couchbase connection
 var clientConnections map[string]map[*ConnWithParameters]struct{} //map used as connection hub, keeps up with clients and their respective connections and each connections settings
 var mutex = &sync.RWMutex{}                                       //mutex used for concurrent reading and writing
-var count int64                                                   //hard coded weight
-var maxBatchSize = 10                                             //max size of data batch that is sent
-var minBatchSize = 1                                              //min size of data batch that is sent
-var batchInterval = time.Duration(2000 * time.Millisecond)        //millisecond interval that data is sent
+
+//batching variables
+var maxBatchSize = 50                                      //max size of data batch that is sent
+var minBatchSize = 1                                       //min size of data batch that is sent
+var batchInterval = time.Duration(1000 * time.Millisecond) //millisecond interval that data is sent
+
+//error variables
 var connErr clientError
-var truncateSize = 0 //determine the number of decimal places we truncate our points to
+
+//bucketing variables
+var truncateSize = 2 //determine the number of decimal places we truncate our points to
+var count int64
+var zeroTest string
 
 // clientError will be the error message that is sent to the frontend if any occurr
 type clientError struct {
@@ -91,6 +99,9 @@ func InitWebsockets(cbConnection string) {
 	clientConnections = make(map[string]map[*ConnWithParameters]struct{})
 	fmt.Println("Ready to Receive Websocket Requests")
 	fmt.Println()
+
+	//initlize zero test for bucketing
+	createZeroTest()
 
 	//handle any websocket requests
 	http.HandleFunc("/receive/ws", createWS)
@@ -241,7 +252,6 @@ func Consume() error {
 							//check if batchArray is full, if so, flush
 
 							if len(conn.batchMap) == maxBatchSize {
-								// fmt.Println("Size Flush")
 								flush(conn)
 							}
 							//add KafkaData of just eventID, lat, lng to batchArray
@@ -374,7 +384,6 @@ func intervalFlush(conn *ConnWithParameters) {
 		//sub returns type Duration, batchInterval is of type Duration
 		if time.Now().Sub(flushTime) >= batchInterval {
 			if len(conn.batchMap) >= minBatchSize {
-				// fmt.Println("Interval Flush")
 				mutex.Lock()
 				flush(conn)
 				mutex.Unlock()
@@ -387,7 +396,6 @@ func intervalFlush(conn *ConnWithParameters) {
 //flush marshals the batch to json, sends the batch over the conn's websocket, and emptys the batch
 func flush(conn *ConnWithParameters) {
 	batch, marshalErr := json.Marshal(conn.batchMap) //marshal to type BatchStruct
-	// fmt.Println(batch)
 	if marshalErr != nil {
 		fmt.Println("batch marshal error")
 		fmt.Println(marshalErr)
@@ -434,8 +442,16 @@ func bucketPoints(conn *ConnWithParameters, rawPt point) {
 	lngSlice := strings.SplitAfter(rawPt.Longitude, ".")
 
 	// Truncate second half of slices
-	latSlice[1] = truncate(latSlice[1], truncateSize)
-	lngSlice[1] = truncate(lngSlice[1], truncateSize)
+	latSlice[1] = truncate(latSlice[1])
+	lngSlice[1] = truncate(lngSlice[1])
+
+	if strings.Contains(latSlice[0], "-0.") {
+		latSlice = checkZero(latSlice)
+	}
+	if strings.Contains(lngSlice[0], "-0.") {
+		lngSlice = checkZero(lngSlice)
+	}
+
 	// Combine the split strings together
 	lat := strings.Join(latSlice, "")
 	lng := strings.Join(lngSlice, "")
@@ -468,9 +484,27 @@ func bucketPoints(conn *ConnWithParameters, rawPt point) {
 }
 
 // trucate takes a string and changes its length
-func truncate(s string, size int) string {
-	if len(s) <= size {
+func truncate(s string) string {
+	if len(s) < truncateSize {
+		//padding
+		for i := len(s); i < truncateSize; i++ {
+			s += "0"
+		}
 		return s
 	}
-	return s[0:size]
+	return s[0:truncateSize]
+}
+
+func createZeroTest() {
+	for i := 0; i < truncateSize; i++ {
+		zeroTest = zeroTest + "0"
+	}
+}
+
+func checkZero(coord []string) []string {
+	if strings.Compare(coord[1], zeroTest) == 0 {
+		coord[0] = "0."
+		return coord
+	}
+	return coord
 }
