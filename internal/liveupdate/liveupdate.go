@@ -40,8 +40,8 @@ var connErr clientError
 
 //bucketing variables
 var truncateSize = 1 //determine the number of decimal places we truncate our points to
-var count int64
-var zeroTest string
+var count int64      //variable used to keep up with the count of how many points in a bucket
+var zeroTest string  //variable used to handle edge case of "-0", used to compare to edge cases in determining if need the negative sign or not
 
 // clientError will be the error message that is sent to the frontend if any occurr
 type clientError struct {
@@ -57,7 +57,7 @@ type ConnWithParameters struct {
 	batchMap   map[string]point    //map that holds buckets of points
 }
 
-//BatchStruct is the JSON format for batch
+//BatchStruct is the JSON format for batch, used to marshal the bucketMap
 type BatchStruct struct {
 	BatchMap map[string]string `json:"batchMap"`
 }
@@ -85,7 +85,7 @@ type point struct {
 	Count     string `json:"count,omitempty"`
 }
 
-//InitWebsockets initializes websocket requests
+//InitWebsockets initializes websocket request handling
 func InitWebsockets(cbConnection string) {
 	cbConn = &couchbase.Couchbase{}
 	err := cbConn.ConnectToCB(cbConnection)
@@ -113,7 +113,7 @@ func InitWebsockets(cbConnection string) {
 	connErr = clientError{}
 }
 
-// Get a request for a point, then send coordinates back to front end
+// createWS takes in a TCP request and upgrades that request to a websocket, it also initializes parameters for the connection
 func createWS(w http.ResponseWriter, r *http.Request) {
 	// Upgrade HTTP server connection to the WebSocket protocol
 	ws, err := upgrader.Upgrade(w, r, nil)
@@ -157,6 +157,7 @@ func readWS(conn *ConnWithParameters) {
 
 		//declare message that will hold client message data
 		var message msg
+		//declare boolean that will determine if connection intialization was successful
 		var success bool
 		//unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
@@ -170,7 +171,7 @@ func readWS(conn *ConnWithParameters) {
 		//WEBSOCKET MANAGEMENT
 		//If havent been connected, initialize all connection parameters, first message has to be clientID
 		if !connected {
-			conn, success = initConn(conn, message)
+			conn, success = initConn(conn, message) //initilaize the connection with parameters, return the intilailized connection and if the initialization was succesful
 			if success {
 				//update connected to true
 				connected = true
@@ -445,6 +446,7 @@ func bucketPoints(conn *ConnWithParameters, rawPt point) {
 	latSlice[1] = truncate(latSlice[1])
 	lngSlice[1] = truncate(lngSlice[1])
 
+	//check for truncating edge case
 	if strings.Contains(latSlice[0], "-0.") {
 		latSlice = checkZero(latSlice)
 	}
@@ -456,8 +458,9 @@ func bucketPoints(conn *ConnWithParameters, rawPt point) {
 	lat := strings.Join(latSlice, "")
 	lng := strings.Join(lngSlice, "")
 
-	//create bucket
+	//create bucket hash
 	bucket := lat + ":" + lng
+
 	//create point
 	pt := point{
 		Latitude:  lat,
@@ -465,7 +468,7 @@ func bucketPoints(conn *ConnWithParameters, rawPt point) {
 		Count:     strconv.Itoa(1),
 	}
 
-	// bucket
+	// Bucketing
 	// check if bucket exists
 	// if it does exists, increase the count
 	if _, contains := conn.batchMap[bucket]; contains {
@@ -475,15 +478,15 @@ func bucketPoints(conn *ConnWithParameters, rawPt point) {
 			fmt.Println("bucketPoint parse error")
 			fmt.Println(err)
 		}
-		count++ // increase the count
-		value.Count = strconv.Itoa(int(count))
+		count++                                // increase the count
+		value.Count = strconv.Itoa(int(count)) //convert back to string
 		conn.batchMap[bucket] = value
 	} else { //otherwise, add the point with the count
 		conn.batchMap[bucket] = pt
 	}
 }
 
-// trucate takes a string and changes its length
+// trucate takes a string and changes its length based on truncateSize
 func truncate(s string) string {
 	if len(s) < truncateSize {
 		//padding if smaller
@@ -496,13 +499,18 @@ func truncate(s string) string {
 	return s[0:truncateSize]
 }
 
+// createZeroTest creates the zeroTest variable based on the truncateSize, which is used to handle "-0." edge case
 func createZeroTest() {
+	// loops based on how much we are truncating
 	for i := 0; i < truncateSize; i++ {
-		zeroTest = zeroTest + "0"
+		zeroTest = zeroTest + "0" //append zeros
 	}
 }
 
+// checkZero determines if a "-0." edge case needs to remove the "-" and does so if necessary
 func checkZero(coord []string) []string {
+	//compare the decimals of the "-0." case to the zeroTest
+	//if they are equal, remove the "-"
 	if strings.Compare(coord[1], zeroTest) == 0 {
 		coord[0] = "0."
 		return coord
