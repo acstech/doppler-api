@@ -355,8 +355,12 @@ func initConn(conn *ConnWithParameters, message msg) (*ConnWithParameters, bool)
 		closeConnection(conn)
 		return conn, false
 	}
-	//start checking if need to flush batch
-	go intervalFlush(conn)
+	//start checking if need to flush batch but iff no other checking has started because
+	// this takes a lot of CPU
+	if len(clientConnections) == 1 {
+		fmt.Println("Started CPU massacre!")
+		go intervalFlush()
+	}
 
 	return conn, true
 }
@@ -376,21 +380,32 @@ func closeConnection(conn *ConnWithParameters) {
 }
 
 //intervalFlush determines when to flush the batch based on the time of the last flush
-func intervalFlush(conn *ConnWithParameters) {
+func intervalFlush() {
 	//initialize time of flush
 	var flushTime time.Time
 	//continuously check if need to flush because of time interval
 	for {
-		//see if current time minus last flush time is greater than or equal to the set interval
-		//sub returns type Duration, batchInterval is of type Duration
-		if time.Now().Sub(flushTime) >= batchInterval {
-			if len(conn.batchMap) >= minBatchSize {
-				mutex.Lock()
-				flush(conn)
-				mutex.Unlock()
-				flushTime = time.Now()
+		// check to see if any clients are connected
+		if len(clientConnections) == 0 { // no clients are connected, so free up the CPU
+			fmt.Println("Ended CPU massacre!")
+			return
+		}
+		mutex.Lock()                              // make sure that nothing writes to the map while it is being looked at
+		for _, conns := range clientConnections { // get each set connections
+			for conn := range conns { // check to see if each connection needs to be flushed
+				//see if current time minus last flush time is greater than or equal to the set interval
+				//sub returns type Duration, batchInterval is of type Duration
+				if time.Now().Sub(flushTime) >= batchInterval {
+					if len(conn.batchMap) >= minBatchSize {
+						mutex.Lock()
+						flush(conn)
+						mutex.Unlock()
+						flushTime = time.Now()
+					}
+				}
 			}
 		}
+		mutex.Unlock()
 	}
 }
 
