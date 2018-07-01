@@ -358,7 +358,6 @@ func initConn(conn *ConnWithParameters, message msg) (*ConnWithParameters, bool)
 	//start checking if need to flush batch but iff no other checking has started because
 	// this takes a lot of CPU
 	if len(clientConnections) == 1 {
-		fmt.Println("Started CPU massacre!")
 		go intervalFlush()
 	}
 
@@ -387,7 +386,6 @@ func intervalFlush() {
 	for {
 		// check to see if any clients are connected
 		if len(clientConnections) == 0 { // no clients are connected, so free up the CPU
-			fmt.Println("Ended CPU massacre!")
 			return
 		}
 		mutex.Lock()                              // make sure that nothing writes to the map while it is being looked at
