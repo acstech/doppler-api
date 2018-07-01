@@ -382,6 +382,8 @@ func closeConnection(conn *ConnWithParameters) {
 func intervalFlush() {
 	//initialize time of flush
 	var flushTime time.Time
+	// time to wait so that data can be added to batches
+	delay := (batchInterval * time.Millisecond / 100) * time.Microsecond
 	//continuously check if need to flush because of time interval
 	for {
 		// check to see if any clients are connected
@@ -404,6 +406,7 @@ func intervalFlush() {
 			}
 		}
 		mutex.Unlock()
+		time.Sleep(delay) // used to allow for data to get into the batches
 	}
 }
 
