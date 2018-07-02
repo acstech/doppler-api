@@ -245,9 +245,6 @@ func Consume() error {
 	// Signal to finish
 	doneCh := make(chan struct{})
 
-	// Check if kafka is down for current connections
-	//down := false
-
 	//go func that continually consumes messages from Kafka
 	go func() {
 	Loop:
@@ -261,7 +258,6 @@ func Consume() error {
 				// Kafka was down, but is now back up, send a message to all clients
 				if kafkaDown {
 					fmt.Println("Kafka back up")
-					//down = false
 					kafkaDown = false
 					// Message to be sent
 					connMess.Success = "201: Live data back up"
@@ -323,24 +319,12 @@ func Consume() error {
 				// If kafkaDown is false, check to see if it is down by dialing broker's address
 				if !kafkaDown {
 					// Set timeout duration
-					//timeout := time.Duration(1 * time.Second)
-					// Dial broker to see if kafka is down
 					conn, err := net.Dial("tcp", brokers[0])
-					// _, err := ping.NewPinger("kafka")
-					// p := fastping.NewPinger()
-					// _, err := net.ResolveIPAddr("")
-					// if err != nil {
-					// 	fmt.Println("Error: ", err)
-					// }
-					// pinger.Count = 3
-					// pinger.Run()
-					//fmt.Println("Dialing")
+
 					// If there is an error and down is false
-					// _, err := http.Get("http://" + brokers[0])
 					if err != nil {
 						fmt.Println("ERROR: ", err)
 						// Do not send again to all current connections
-						// down = true
 						// Error message to be sent
 						connErr.Error = "506: Unable to get live data"
 						// Go through all connections
