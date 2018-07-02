@@ -215,7 +215,7 @@ func Consume() error {
 	// Create a new configuration instance
 	config := sarama.NewConfig()
 	// Specify brokers address. 9092 is default
-	brokers := []string{"localhost:9092"}
+	brokers := []string{"127.0.0.1:9092"}
 
 	// Create a new consumer
 	master, err := sarama.NewConsumer(brokers, config)
@@ -252,7 +252,7 @@ func Consume() error {
 			select {
 			// In case of error
 			case err = <-consumer.Errors():
-				fmt.Println(err)
+				fmt.Println("Consumer Error: ", err)
 			// Print consumer messages
 			case msg := <-consumer.Messages():
 				// Kafka was down, but is now back up, send a message to all clients
@@ -319,8 +319,8 @@ func Consume() error {
 				// If kafkaDown is false, check to see if it is down by dialing broker's address
 				if !kafkaDown {
 					// Set timeout duration
-					_, err := net.Dial("tcp", brokers[0])
-
+					_, err = net.Dial("tcp", brokers[0])
+					//_, err := ping.NewPinger(brokers[0])
 					// If there is an error and down is false
 					if err != nil {
 						fmt.Println("ERROR: ", err)
