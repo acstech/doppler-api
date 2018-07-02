@@ -319,7 +319,7 @@ func Consume() error {
 				// If kafkaDown is false, check to see if it is down by dialing broker's address
 				if !kafkaDown {
 					// Set timeout duration
-					conn, err := net.Dial("tcp", brokers[0])
+					_, err := net.Dial("tcp", brokers[0])
 
 					// If there is an error and down is false
 					if err != nil {
@@ -340,7 +340,6 @@ func Consume() error {
 						// Kafka is down
 						kafkaDown = true
 					}
-					conn.Close()
 				}
 			}
 		}
