@@ -259,13 +259,9 @@ func Consume() error {
 								flush(conn)
 							}
 							//add KafkaData of just eventID, lat, lng to batchArray
-							bucketPoints(conn, Latlng{
-								// EventID:   kafkaData.EventID,
-								Coords: Point{
-									Lat: kafkaData.Latitude,
-									Lng: kafkaData.Longitude,
-								},
-								Count: 1,
+							bucketPoints(conn, Point{
+								Lat: kafkaData.Latitude,
+								Lng: kafkaData.Longitude,
 							})
 						}
 					}
@@ -421,6 +417,7 @@ func flush(conn *ConnWithParameters) {
 		fmt.Println("batch marshal error")
 		fmt.Println(marshalErr)
 	}
+	fmt.Println(string(batch))
 	writeErr := conn.ws.WriteJSON(string(batch)) //send batch to client
 	if writeErr != nil {
 		fmt.Println("Flush Write Error")
@@ -457,11 +454,11 @@ func updateAvailableFilters(conn *ConnWithParameters, newFilter string) {
 }
 
 // bucketPoints takes a connection and a point and puts them in the batch of buckets as necessary
-func bucketPoints(conn *ConnWithParameters, rawPt Latlng) {
+func bucketPoints(conn *ConnWithParameters, rawPt Point) {
 	// Truncate each item in batch
 	// Split float by decimal
-	latSlice := strings.SplitAfter(rawPt.Coords.Lat, ".")
-	lngSlice := strings.SplitAfter(rawPt.Coords.Lng, ".")
+	latSlice := strings.SplitAfter(rawPt.Lat, ".")
+	lngSlice := strings.SplitAfter(rawPt.Lng, ".")
 
 	// Truncate second half of slices
 	latSlice[1] = truncate(latSlice[1])
