@@ -594,3 +594,12 @@ func checkZero(coord []string) []string {
 	}
 	return coord
 }
+
+// Send error to connection
+func messageClient(conn *ConnWithParameters, message struct{}) {
+	// Write error to websocket
+	err := conn.ws.WriteJSON(message)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
