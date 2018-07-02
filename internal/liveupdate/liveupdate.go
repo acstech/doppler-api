@@ -16,6 +16,8 @@ import (
 	"github.com/acstech/doppler-api/internal/couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/gorilla/websocket"
+	//"github.com/sparrc/go-ping"
+	//"github.com/tatsushid/go-fastping"
 )
 
 //upgrader var used to set parameters for websocket connections
@@ -316,8 +318,9 @@ func Consume() error {
 			default:
 				// If kafkaDown is false, check to see if it is down by dialing broker's address
 				if !kafkaDown {
-					// Dial broker to see if kafka is down
-					_, err := net.Dial("tcp", brokers[0])
+					// Set timeout duration
+					conn, err := net.Dial("tcp", brokers[0])
+
 					// If there is an error and down is false
 					if err != nil {
 						fmt.Println("ERROR: ", err)
@@ -337,6 +340,7 @@ func Consume() error {
 						// Kafka is down
 						kafkaDown = true
 					}
+					conn.Close()
 				}
 			}
 		}
