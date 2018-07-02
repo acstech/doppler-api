@@ -1,14 +1,41 @@
-# Doppler-API
-An API to consume data from Kafka and send it to the frontend via websockets.
-## Setup
-### General
-- Clone the repository
-### Docker
-- [Look at general setup steps for Doppler-Events and ensure the same services are running](https://github.com/acstech/doppler-events#Setup)
-### Couchbase
-- [Look here for Couchbase setup](https://github.com/acstech/doppler-events#couchbase)
-- Then, copy and rename the .env.defualt in the root directory to .env and fill out the appropriate environment variables to connect to Couchbase. (Use "localhost" for "host" in development)
+## Doppler-Heatmap
 
-## Test
-- Run `go run cmd/doppler-api/main.go`
-- Then enact the these [steps](https://github.com/acstech/doppler-events#testing--not-completed-yet-)
+This repository contains the second API layer supporting Doppler-Heatmap.
+
+Doppler-API consumes data off Kafka served by Doppler-events and sends this data over a web connection in JSON format to be displayed by a front end client. Doppler-frontend is available to display geographic data in heat-map format [here](https://github.com/acstech/doppler-frontend).
+
+#### Tools
+* API-level language: Golang (1.10.2)
+* Historical data storage: InfluxDB (1.4.3)
+* Client and event identification data: Couchbase (Enterprise edition 5.1.1)
+
+
+### Prerequisites
+
+Doppler-api depends on Doppler-Events to serve its purpose. Doppler-frontend is necessary to display the data. Make sure both setup is complete for these repositories also.
+[See these instructions](https://github.com/acstech/doppler-events#Setup)
+
+### Setup
+
+Clone this repository.
+
+Follow all the steps listed [here](https://github.com/acstech/doppler-events#Setup)
+
+
+### Testing
+
+To start listening and consuming messages from Kafka, run the following from the root directory.
+```
+go run cmd/doppler-api/main.go
+```
+
+To receive messages and send over a web-socket connection, doppler-events and doppler-frontend must be running.
+
+## Contributors
+
+* [Ben Wornom](https://github.com/bwornom7)
+* [Leander Stevano](https://github.com/deepmicrobe)
+* [Matt Smith](https://github.com/mattsmith803)
+* [Matt Harrington](https://github.com/Matt2Harrington)
+* [Pranav Minasandram](https://github.com/PranavMin)
+* [Peter Kaufman](https://github.com/pjkaufman)
