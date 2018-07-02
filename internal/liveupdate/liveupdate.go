@@ -412,7 +412,6 @@ func flush(conn *ConnWithParameters) {
 		fmt.Println("batch marshal error")
 		fmt.Println(marshalErr)
 	}
-	fmt.Println(string(batch))
 	writeErr := conn.ws.WriteJSON(string(batch)) //send batch to client
 	if writeErr != nil {
 		fmt.Println("Flush Write Error")
