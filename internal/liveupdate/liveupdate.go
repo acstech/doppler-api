@@ -16,6 +16,8 @@ import (
 	"github.com/acstech/doppler-api/internal/couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/gorilla/websocket"
+	//"github.com/sparrc/go-ping"
+	//"github.com/tatsushid/go-fastping"
 )
 
 //upgrader var used to set parameters for websocket connections
@@ -317,7 +319,16 @@ func Consume() error {
 				// If kafkaDown is false, check to see if it is down by dialing broker's address
 				if !kafkaDown {
 					// Dial broker to see if kafka is down
-					_, err := net.Dial("tcp", brokers[0])
+					conn, err := net.Dial("tcp", brokers[0])
+					// _, err := ping.NewPinger("kafka")
+					// p := fastping.NewPinger()
+					// _, err := net.ResolveIPAddr("")
+					// if err != nil {
+					// 	fmt.Println("Error: ", err)
+					// }
+					// pinger.Count = 3
+					// pinger.Run()
+					//fmt.Println("Dialing")
 					// If there is an error and down is false
 					if err != nil {
 						fmt.Println("ERROR: ", err)
@@ -337,6 +348,7 @@ func Consume() error {
 						// Kafka is down
 						kafkaDown = true
 					}
+					conn.Close()
 				}
 			}
 		}
@@ -593,13 +605,4 @@ func checkZero(coord []string) []string {
 		return coord
 	}
 	return coord
-}
-
-// Send error to connection
-func messageClient(conn *ConnWithParameters, message struct{}) {
-	// Write error to websocket
-	err := conn.ws.WriteJSON(message)
-	if err != nil {
-		fmt.Println(err)
-	}
 }
