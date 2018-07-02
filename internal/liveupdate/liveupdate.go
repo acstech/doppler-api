@@ -16,6 +16,8 @@ import (
 	"github.com/acstech/doppler-api/internal/couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/gorilla/websocket"
+	//"github.com/sparrc/go-ping"
+	//"github.com/tatsushid/go-fastping"
 )
 
 //upgrader var used to set parameters for websocket connections
@@ -244,7 +246,7 @@ func Consume() error {
 	doneCh := make(chan struct{})
 
 	// Check if kafka is down for current connections
-	down := false
+	//down := false
 
 	//go func that continually consumes messages from Kafka
 	go func() {
@@ -259,7 +261,7 @@ func Consume() error {
 				// Kafka was down, but is now back up, send a message to all clients
 				if kafkaDown {
 					fmt.Println("Kafka back up")
-					down = false
+					//down = false
 					kafkaDown = false
 					// Message to be sent
 					connMess.Success = "201: Live data back up"
@@ -323,12 +325,22 @@ func Consume() error {
 					// Set timeout duration
 					//timeout := time.Duration(1 * time.Second)
 					// Dial broker to see if kafka is down
-					_, err := net.Dial("tcp", brokers[0])
+					conn, err := net.Dial("tcp", brokers[0])
+					// _, err := ping.NewPinger("kafka")
+					// p := fastping.NewPinger()
+					// _, err := net.ResolveIPAddr("")
+					// if err != nil {
+					// 	fmt.Println("Error: ", err)
+					// }
+					// pinger.Count = 3
+					// pinger.Run()
+					//fmt.Println("Dialing")
 					// If there is an error and down is false
-					if err != nil && !down {
+					// _, err := http.Get("http://" + brokers[0])
+					if err != nil {
 						fmt.Println("ERROR: ", err)
 						// Do not send again to all current connections
-						down = true
+						// down = true
 						// Error message to be sent
 						connErr.Error = "506: Unable to get live data"
 						// Go through all connections
@@ -344,6 +356,7 @@ func Consume() error {
 						// Kafka is down
 						kafkaDown = true
 					}
+					conn.Close()
 				}
 			}
 		}
@@ -600,13 +613,4 @@ func checkZero(coord []string) []string {
 		return coord
 	}
 	return coord
-}
-
-// Send error to connection
-func messageClient(conn *ConnWithParameters, message struct{}) {
-	// Write error to websocket
-	err := conn.ws.WriteJSON(message)
-	if err != nil {
-		fmt.Println(err)
-	}
 }
