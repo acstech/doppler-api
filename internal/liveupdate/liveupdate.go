@@ -84,8 +84,8 @@ type Latlng struct {
 
 // Point that holds the specific lat lng data
 type Point struct {
-	Latitude  string `json:"latitude,omitempty"`
-	Longitude string `json:"longitude,omitempty"`
+	Lat string `json:"lat,omitempty"`
+	Lng string `json:"lng,omitempty"`
 }
 
 //InitWebsockets initializes websocket request handling
@@ -262,8 +262,8 @@ func Consume() error {
 							bucketPoints(conn, Latlng{
 								// EventID:   kafkaData.EventID,
 								Coords: Point{
-									Latitude:  kafkaData.Latitude,
-									Longitude: kafkaData.Longitude,
+									Lat: kafkaData.Latitude,
+									Lng: kafkaData.Longitude,
 								},
 								Count: 1,
 							})
@@ -460,8 +460,8 @@ func updateAvailableFilters(conn *ConnWithParameters, newFilter string) {
 func bucketPoints(conn *ConnWithParameters, rawPt Latlng) {
 	// Truncate each item in batch
 	// Split float by decimal
-	latSlice := strings.SplitAfter(rawPt.Coords.Latitude, ".")
-	lngSlice := strings.SplitAfter(rawPt.Coords.Longitude, ".")
+	latSlice := strings.SplitAfter(rawPt.Coords.Lat, ".")
+	lngSlice := strings.SplitAfter(rawPt.Coords.Lng, ".")
 
 	// Truncate second half of slices
 	latSlice[1] = truncate(latSlice[1])
@@ -485,8 +485,8 @@ func bucketPoints(conn *ConnWithParameters, rawPt Latlng) {
 	//create point
 	pt := Latlng{
 		Coords: Point{
-			Latitude:  lat,
-			Longitude: lng,
+			Lat: lat,
+			Lng: lng,
 		},
 		Count: 1,
 	}
