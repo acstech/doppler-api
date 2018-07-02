@@ -243,9 +243,6 @@ func Consume() error {
 	// Signal to finish
 	doneCh := make(chan struct{})
 
-	// Check if kafka is down for current connections
-	down := false
-
 	//go func that continually consumes messages from Kafka
 	go func() {
 	Loop:
@@ -259,7 +256,6 @@ func Consume() error {
 				// Kafka was down, but is now back up, send a message to all clients
 				if kafkaDown {
 					fmt.Println("Kafka back up")
-					down = false
 					kafkaDown = false
 					// Message to be sent
 					connMess.Success = "201: Live data back up"
@@ -320,15 +316,12 @@ func Consume() error {
 			default:
 				// If kafkaDown is false, check to see if it is down by dialing broker's address
 				if !kafkaDown {
-					// Set timeout duration
-					//timeout := time.Duration(1 * time.Second)
 					// Dial broker to see if kafka is down
 					_, err := net.Dial("tcp", brokers[0])
 					// If there is an error and down is false
-					if err != nil && !down {
+					if err != nil {
 						fmt.Println("ERROR: ", err)
 						// Do not send again to all current connections
-						down = true
 						// Error message to be sent
 						connErr.Error = "506: Unable to get live data"
 						// Go through all connections
@@ -456,7 +449,7 @@ func intervalFlush() {
 	//initialize time of flush
 	var flushTime time.Time
 	// time to wait so that data can be added to batches
-	delay := (batchInterval * time.Millisecond / 100) * time.Microsecond
+	// delay := (batchInterval * time.Millisecond / 100) * time.Microsecond
 	//continuously check if need to flush because of time interval
 	for {
 		// check to see if any clients are connected
@@ -470,16 +463,13 @@ func intervalFlush() {
 				//sub returns type Duration, batchInterval is of type Duration
 				if time.Now().Sub(flushTime) >= batchInterval {
 					if len(conn.batchMap) >= minBatchSize {
-						mutex.Lock()
 						flush(conn)
-						mutex.Unlock()
 						flushTime = time.Now()
 					}
 				}
 			}
 		}
 		mutex.Unlock()
-		time.Sleep(delay) // used to allow for data to get into the batches
 	}
 }
 
@@ -605,13 +595,4 @@ func checkZero(coord []string) []string {
 		return coord
 	}
 	return coord
-}
-
-// Send error to connection
-func messageClient(conn *ConnWithParameters, message struct{}) {
-	// Write error to websocket
-	err := conn.ws.WriteJSON(message)
-	if err != nil {
-		fmt.Println(err)
-	}
 }
