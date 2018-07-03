@@ -3,6 +3,7 @@ package liveupdate
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +16,8 @@ import (
 	"github.com/acstech/doppler-api/internal/couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/gorilla/websocket"
+	//"github.com/sparrc/go-ping"
+	//"github.com/tatsushid/go-fastping"
 )
 
 //upgrader var used to set parameters for websocket connections
@@ -37,11 +40,20 @@ var batchInterval = time.Duration(1000 * time.Millisecond) //millisecond interva
 
 //error variables
 var connErr clientError
+var kafkaDown bool // check if kafka is down for new connections
+
+// Message variable
+var connMess clientMessage
 
 //bucketing variables
 var truncateSize = 1 //determine the number of decimal places we truncate our points to
 var count int64      //variable used to keep up with the count of how many points in a bucket
 var zeroTest string  //variable used to handle edge case of "-0", used to compare to edge cases in determining if need the negative sign or not
+
+// Message alerts the connection for anything happening
+type clientMessage struct {
+	Success string `json:"Success"`
+}
 
 // clientError will be the error message that is sent to the frontend if any occurr
 type clientError struct {
@@ -111,6 +123,8 @@ func InitWebsockets(cbConnection string) {
 		panic(fmt.Errorf("error setting up the websocket endpoint: %v", err))
 	}
 	connErr = clientError{}
+	connMess = clientMessage{}
+	kafkaDown = false
 }
 
 // createWS takes in a TCP request and upgrades that request to a websocket, it also initializes parameters for the connection
@@ -133,6 +147,16 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 		allFilters: make(map[string]struct{}),
 		batchMap:   make(map[string]point),
 	}
+
+	// For incoming connections, check if kafka is down
+	if kafkaDown {
+		connErr.Error = "506: Unable to get live data"
+		err = conn.ws.WriteJSON(connErr)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+
 	//now listen for messages for this created websocket
 	go readWS(conn)
 }
@@ -191,7 +215,7 @@ func Consume() error {
 	// Create a new configuration instance
 	config := sarama.NewConfig()
 	// Specify brokers address. 9092 is default
-	brokers := []string{"localhost:9092"}
+	brokers := []string{"127.0.0.1:9092"}
 
 	// Create a new consumer
 	master, err := sarama.NewConsumer(brokers, config)
@@ -220,6 +244,7 @@ func Consume() error {
 
 	// Signal to finish
 	doneCh := make(chan struct{})
+
 	//go func that continually consumes messages from Kafka
 	go func() {
 	Loop:
@@ -227,9 +252,26 @@ func Consume() error {
 			select {
 			// In case of error
 			case err = <-consumer.Errors():
-				fmt.Println(err)
+				fmt.Println("Consumer Error: ", err)
 			// Print consumer messages
 			case msg := <-consumer.Messages():
+				// Kafka was down, but is now back up, send a message to all clients
+				if kafkaDown {
+					fmt.Println("Kafka back up")
+					kafkaDown = false
+					// Message to be sent
+					connMess.Success = "201: Live data back up"
+					// Go through all clients
+					for id := range clientConnections {
+						// Look up websocket connection
+						for conn := range clientConnections[id] {
+							err := conn.ws.WriteJSON(connMess)
+							if err != nil {
+								fmt.Println(err)
+							}
+						}
+					}
+				}
 				//initialize variable to hold data from kafka data
 				var kafkaData KafkaData
 				err = json.Unmarshal(msg.Value, &kafkaData) //unmarshal data to json
@@ -272,6 +314,33 @@ func Consume() error {
 				fmt.Println(count)
 				doneCh <- struct{}{}
 				break Loop
+			// Check if Kafka is down
+			default:
+				// If kafkaDown is false, check to see if it is down by dialing broker's address
+				if !kafkaDown {
+					// Set timeout duration
+					_, err = net.Dial("tcp", brokers[0])
+					//_, err := ping.NewPinger(brokers[0])
+					// If there is an error and down is false
+					if err != nil {
+						fmt.Println("ERROR: ", err)
+						// Do not send again to all current connections
+						// Error message to be sent
+						connErr.Error = "506: Unable to get live data"
+						// Go through all connections
+						for id := range clientConnections {
+							// Look up websocket connection
+							for conn := range clientConnections[id] {
+								err = conn.ws.WriteJSON(connErr)
+								if err != nil {
+									fmt.Println(err)
+								}
+							}
+						}
+						// Kafka is down
+						kafkaDown = true
+					}
+				}
 			}
 		}
 	}()
