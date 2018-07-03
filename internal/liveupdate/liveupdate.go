@@ -66,8 +66,6 @@ type BatchStruct struct {
 type msg struct {
 	ClientID string   `json:"clientID,omitempty"`
 	Filter   []string `json:"Filter,omitempty"`
-	//startTime <type> `json:"startTime, omitempty"`
-	//endTime <type> `json:"endTime, omitempty"`
 }
 
 //KafkaData is the JSON format messages from Kafka
@@ -186,12 +184,12 @@ func readWS(conn *ConnWithParameters) {
 }
 
 // Consume consumes messages from queue
-func Consume() error {
+func Consume(kafkaConn, topic string) error {
 	fmt.Println("Kafka Consume Started")
 	// Create a new configuration instance
 	config := sarama.NewConfig()
 	// Specify brokers address. 9092 is default
-	brokers := []string{"localhost:9092"}
+	brokers := []string{kafkaConn}
 
 	// Create a new consumer
 	master, err := sarama.NewConsumer(brokers, config)
@@ -203,9 +201,6 @@ func Consume() error {
 	defer func() {
 		err = master.Close()
 	}()
-
-	// Topic to consume
-	topic := "influx-topic"
 
 	// ConsumePartition creates a PartitionConsumer on the given topic/partition with the given offset
 	// A PartitionConsumer processes messages from a given topic and partition
