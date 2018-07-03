@@ -24,10 +24,11 @@ Follow all the steps listed [here](https://github.com/acstech/doppler-events#Set
 
 ### Testing
 
-To start listening and consuming messages from Kafka, run the following from the root directory.
-```
-go run cmd/doppler-api/main.go
-```
+Run `docker build . -t acst/doppler-api:latest`
+
+Then go to doppler-events/ and `run docker-compose up -d`
+
+_Note: All the docker images must have been built at least once in order for docker-compose up -d to work._
 
 To receive messages and send over a web-socket connection, doppler-events and doppler-frontend must be running.
 
