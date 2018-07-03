@@ -1,0 +1,4 @@
+# what you don't want
+!.env
+!.env.Default
+!.gitignore
