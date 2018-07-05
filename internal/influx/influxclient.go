@@ -22,6 +22,7 @@ type Responses struct {
 	ValArray []InfluxResponse
 }
 
+//GetPoints recieves a query string and returns the results from the influx client and returns the results
 func GetPoints(clnt client.Client, query string) (res Responses, err error) {
 
 	q := client.NewQuery(query, DB, "s")
