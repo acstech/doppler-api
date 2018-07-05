@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,7 +39,6 @@ var connErr clientError
 
 //bucketing variables
 var truncateSize = 1 //determine the number of decimal places we truncate our points to
-var count int64      //variable used to keep up with the count of how many points in a bucket
 var zeroTest string  //variable used to handle edge case of "-0", used to compare to edge cases in determining if need the negative sign or not
 
 // clientError will be the error message that is sent to the frontend if any occurr
@@ -54,7 +52,7 @@ type ConnWithParameters struct {
 	clientID   string              //the clientID associated with this connection
 	filter     map[string]struct{} //a map of the events that the client currently wants to see
 	allFilters map[string]struct{} //a map of all the events that the client has available
-	batchMap   map[string]point    //map that holds buckets of points
+	batchMap   map[string]Latlng   //map that holds buckets of points
 }
 
 //BatchStruct is the JSON format for batch, used to marshal the bucketMap
@@ -78,11 +76,16 @@ type KafkaData struct {
 	EventID   string `json:"eventID,omitempty"`
 }
 
-//point is the struct to hold data for points
-type point struct {
-	Latitude  string `json:"lat,omitempty"`
-	Longitude string `json:"lng,omitempty"`
-	Count     string `json:"count,omitempty"`
+//Latlng is the struct to hold data that is sent to the frontend
+type Latlng struct {
+	Coords Point `json:"latlng,omitempty"`
+	Count  int   `json:"count,omitempty"`
+}
+
+// Point that holds the specific lat lng data
+type Point struct {
+	Lat string `json:"lat,omitempty"`
+	Lng string `json:"lng,omitempty"`
 }
 
 //InitWebsockets initializes websocket request handling
@@ -131,7 +134,7 @@ func createWS(w http.ResponseWriter, r *http.Request) {
 		clientID:   "",
 		filter:     make(map[string]struct{}),
 		allFilters: make(map[string]struct{}),
-		batchMap:   make(map[string]point),
+		batchMap:   make(map[string]Latlng),
 	}
 	//now listen for messages for this created websocket
 	go readWS(conn)
@@ -256,11 +259,9 @@ func Consume() error {
 								flush(conn)
 							}
 							//add KafkaData of just eventID, lat, lng to batchArray
-							bucketPoints(conn, point{
-								// EventID:   kafkaData.EventID,
-								Latitude:  kafkaData.Latitude,
-								Longitude: kafkaData.Longitude,
-								Count:     strconv.FormatInt(count, 10),
+							bucketPoints(conn, Point{
+								Lat: kafkaData.Latitude,
+								Lng: kafkaData.Longitude,
 							})
 						}
 					}
@@ -269,7 +270,6 @@ func Consume() error {
 			// Service interruption
 			case <-signals:
 				fmt.Println("Interrupt detected")
-				fmt.Println(count)
 				doneCh <- struct{}{}
 				break Loop
 			}
@@ -414,9 +414,10 @@ func flush(conn *ConnWithParameters) {
 	}
 	writeErr := conn.ws.WriteJSON(string(batch)) //send batch to client
 	if writeErr != nil {
+		fmt.Println("Flush Write Error")
 		fmt.Println(writeErr)
 	}
-	conn.batchMap = make(map[string]point) //empty batch
+	conn.batchMap = make(map[string]Latlng) //empty batch
 }
 
 //updateLiveFilters removes the current filters and sets filter equal to the new filters found in the message
@@ -447,11 +448,11 @@ func updateAvailableFilters(conn *ConnWithParameters, newFilter string) {
 }
 
 // bucketPoints takes a connection and a point and puts them in the batch of buckets as necessary
-func bucketPoints(conn *ConnWithParameters, rawPt point) {
+func bucketPoints(conn *ConnWithParameters, rawPt Point) {
 	// Truncate each item in batch
 	// Split float by decimal
-	latSlice := strings.SplitAfter(rawPt.Latitude, ".")
-	lngSlice := strings.SplitAfter(rawPt.Longitude, ".")
+	latSlice := strings.SplitAfter(rawPt.Lat, ".")
+	lngSlice := strings.SplitAfter(rawPt.Lng, ".")
 
 	// Truncate second half of slices
 	latSlice[1] = truncate(latSlice[1])
@@ -473,25 +474,21 @@ func bucketPoints(conn *ConnWithParameters, rawPt point) {
 	bucket := lat + ":" + lng
 
 	//create point
-	pt := point{
-		Latitude:  lat,
-		Longitude: lng,
-		Count:     strconv.Itoa(1),
+	pt := Latlng{
+		Coords: Point{
+			Lat: lat,
+			Lng: lng,
+		},
+		Count: 1,
 	}
 
 	// Bucketing
 	// check if bucket exists
 	// if it does exists, increase the count
 	if _, contains := conn.batchMap[bucket]; contains {
-		value := conn.batchMap[bucket]                      //get the value of the bucket
-		count, err := strconv.ParseInt(value.Count, 10, 64) // get the count from value
-		if err != nil {
-			fmt.Println("bucketPoint parse error")
-			fmt.Println(err)
-		}
-		count++                                // increase the count
-		value.Count = strconv.Itoa(int(count)) //convert back to string
-		conn.batchMap[bucket] = value
+		value := conn.batchMap[bucket] //get the value of the bucket
+		value.Count++                  //increase the count
+		conn.batchMap[bucket] = value  //add the new count to the point
 	} else { //otherwise, add the point with the count
 		conn.batchMap[bucket] = pt
 	}
