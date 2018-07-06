@@ -8,4 +8,3 @@ done;
 echo "Kafka and Couchbase are up"
 # safe to run the service
 /opt/service/frontendAPI
-    
