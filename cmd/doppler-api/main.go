@@ -18,15 +18,15 @@ import (
 func main() {
 
 	// get environment variables
-	cbEnv := os.Getenv("COUCHBASE_CONN")
-	kafkaCon, kafkaTopic, err := kafkaParse(os.Getenv("KAFKA_CONN"))
-	if err != nil {
-		fmt.Println("kafka parse error: ", err)
-	}
+	// cbEnv := os.Getenv("COUCHBASE_CONN")
+	// kafkaCon, kafkaTopic, err := kafkaParse(os.Getenv("KAFKA_CONN"))
+	// if err != nil {
+	// 	fmt.Println("kafka parse error: ", err)
+	// }
 
-	// cbEnv := "couchbase://root:rootroot@localhost/doppler"
-	// kafkaCon := "kafka:9092"
-	// kafkaTopic := "kafka_topic"
+	cbEnv := "couchbase://root:rootroot@localhost/doppler"
+	kafkaCon := "kafka:9092"
+	kafkaTopic := "kafka_topic"
 
 	// influxCon := os.Getenv("INFLUX_CONN")
 
