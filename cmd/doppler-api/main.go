@@ -23,10 +23,10 @@ func main() {
 	if err != nil {
 		fmt.Println("kafka parse error: ", err)
 	}
+
 	// cbEnv := "couchbase://root:rootroot@localhost/doppler"
 	// kafkaCon := "kafka:9092"
 	// kafkaTopic := "kafka_topic"
-	// err := ""
 
 	// influxCon := os.Getenv("INFLUX_CONN")
 
@@ -48,7 +48,7 @@ func main() {
 
 	//connect to couchbase
 	cbConn := &couchbase.Couchbase{}
-	err = cbConn.ConnectToCB(cbEnv)
+	err := cbConn.ConnectToCB(cbEnv)
 	if err != nil {
 		panic(fmt.Errorf("error connecting to couchbase: %v", err))
 	}
