@@ -26,6 +26,7 @@ func main() {
 	// cbEnv := "couchbase://root:rootroot@localhost/doppler"
 	// kafkaCon := "kafka:9092"
 	// kafkaTopic := "kafka_topic"
+	// err := ""
 
 	// influxCon := os.Getenv("INFLUX_CONN")
 
