@@ -108,7 +108,6 @@ func (c *ConnectionManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //readWS continually reads messages from a ConnWithParameters' websocket, initializes connection parameters and updates live filters when necessary
 func (c *ConnectionManager) readWS(conn *ConnWithParameters) {
 	defer conn.ws.Close() //close the connection whenever readWS returns
-
 	//boolean used to keep up if this websocket has been connected
 	connected := false
 
@@ -139,7 +138,6 @@ func (c *ConnectionManager) readWS(conn *ConnWithParameters) {
 				fmt.Println("readWS unmarshal msg error ", err)
 			}
 		}
-
 		//If havent been connected, initialize all connection parameters, first message has to be clientID
 		if !connected {
 			success = c.registerConn(conn, message) //initilaize the connection with parameters, return the intilailized connection and if the initialization was succesful
@@ -167,10 +165,10 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 	//update conn with new parameters
 	//add clientID to connection
 	conn.clientID = message.ClientID
-
 	//check if client is already connected on another websocket
 	//if client has not been connected, create new connection map
 	c.mutex.Lock()
+	fmt.Println("GOT HERE")
 	if _, contains := c.connections[conn.clientID]; !contains {
 		c.connections[conn.clientID] = make(map[*ConnWithParameters]struct{})
 	}
@@ -273,11 +271,9 @@ func (c *ConnectionManager) intervalFlush() {
 	//continuously check if need to flush because of time interval
 	for {
 		// check to see if any clients are connected
-		c.mutex.RLock()
 		if len(c.connections) == 0 { // no clients are connected, so free up the CPU
 			return
 		}
-		c.mutex.RUnlock()
 		c.mutex.Lock()                            // make sure that nothing writes to the map while it is being looked at
 		for _, clientIDs := range c.connections { // get each clientID
 			for conn := range clientIDs { // check to see if each connection needs to be flushed
