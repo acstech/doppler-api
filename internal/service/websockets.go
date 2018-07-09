@@ -147,7 +147,9 @@ func (c *ConnectionManager) readWS(conn *ConnWithParameters) {
 				//update connected to true
 				connected = true
 				//initlize zero test for bucketing
+				c.mutex.Lock()
 				conn.zeroTest = createZeroTest(c.defaultTruncateSize)
+				c.mutex.Unlock()
 			}
 			//continue to next for loop iteration, skipping updating filters on first iteration
 			continue
