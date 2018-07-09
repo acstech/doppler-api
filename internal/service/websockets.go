@@ -154,7 +154,9 @@ func (c *ConnectionManager) readWS(conn *ConnWithParameters) {
 		}
 
 		//if client has already been connected, only other messages should be filter updates
+		c.mutex.Lock()
 		conn.updateActiveFilters(message.Filter)
+		c.mutex.Unlock()
 	}
 }
 
@@ -251,8 +253,8 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 	if len(c.connections[conn.clientID]) == 0 {
 		delete(c.connections, conn.clientID)
 	}
-	fmt.Println("Removed Conn: ", c.connections)
 	c.mutex.Unlock()
+	fmt.Println("Removed Conn: ", c.connections)
 }
 
 //updateActiveFilters removes the current filters and sets filter equal to the new filters found in the message
