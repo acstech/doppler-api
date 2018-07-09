@@ -273,9 +273,11 @@ func (c *ConnectionManager) intervalFlush() {
 	//continuously check if need to flush because of time interval
 	for {
 		// check to see if any clients are connected
+		c.mutex.RLock()
 		if len(c.connections) == 0 { // no clients are connected, so free up the CPU
 			return
 		}
+		c.mutex.RUnlock()
 		c.mutex.Lock()                            // make sure that nothing writes to the map while it is being looked at
 		for _, clientIDs := range c.connections { // get each clientID
 			for conn := range clientIDs { // check to see if each connection needs to be flushed
