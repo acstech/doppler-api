@@ -54,7 +54,7 @@ Loop:
 			}
 			// Check if ClientID exists
 			c.mutex.RLock()
-			fmt.Println("c rlock consume")
+			// fmt.Println("c rlock consume")
 			_, contains := c.connections[kafkaData.ClientID]
 
 			// if clientID exists, lock state, and send to client's connections
@@ -78,7 +78,7 @@ Loop:
 					if hasEvent {
 						// check if batchArray is full, if so, flush
 						if len(conn.batchMap) == c.maxBatchSize {
-							fmt.Println("SIZE FLUSH")
+							fmt.Println("size flush")
 							conn.flush()
 						}
 						// add KafkaData of just eventID, lat, lng to batchArray
@@ -92,7 +92,7 @@ Loop:
 				}
 			}
 			c.mutex.RUnlock()
-			fmt.Println("c runlock consume")
+			// fmt.Println("c runlock consume")
 		case <-quit:
 			fmt.Println("Interrupt detected")
 			break Loop

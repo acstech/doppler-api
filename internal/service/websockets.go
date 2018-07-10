@@ -271,6 +271,7 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 	fmt.Println("c lock unregis")
 	conn.mutex.RLock()
 	fmt.Println("conn rlock unregis")
+
 	defer func() {
 		c.mutex.Unlock()
 		fmt.Println("c unlock unregis")
@@ -293,8 +294,10 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 func (conn *ConnWithParameters) updateActiveFilters(newFilters []string) {
 	conn.mutex.Lock()
 	fmt.Println("conn lock update active")
-	defer conn.mutex.Unlock()
-	fmt.Println("conn unlock update active")
+	defer func() {
+		conn.mutex.Unlock()
+		fmt.Println("conn unlock update active")
+	}()
 
 	conn.activeFilters = make(map[string]struct{}) // empty current filters
 	// iterate through client message filter array and add the elements to the connection filter slice
@@ -308,7 +311,7 @@ func (c *ConnectionManager) intervalFlush() {
 	// continuously check if need to flush because of time interval
 	for {
 		c.mutex.RLock()
-		fmt.Println("c rlock interval")
+		// fmt.Println("c rlock interval")
 		// check to see if any clients are connected
 		if len(c.connections) == 0 { // no clients are connected, so free up the CPU
 			c.intervalFlushStarted = false
@@ -321,20 +324,19 @@ func (c *ConnectionManager) intervalFlush() {
 				// see if current time minus last flush time is greater than or equal to the set interval
 				// sub returns type Duration, batchInterval is of type Duration
 				conn.mutex.Lock()
-				fmt.Println("conn lock interval")
+				// fmt.Println("conn lock interval")
 				if time.Now().Sub(conn.flushTime) >= c.batchInterval {
 					if len(conn.batchMap) >= c.minBatchSize {
-						fmt.Println("INTERVAL FLUSH CALL")
 						conn.flush()
 						conn.flushTime = time.Now()
 					}
 				}
 				conn.mutex.Unlock()
-				fmt.Println("conn unlock interval")
+				// fmt.Println("conn unlock interval")
 			}
 		}
 		c.mutex.RUnlock()
-		fmt.Println("c unrlock interval")
+		// fmt.Println("c unrlock interval")
 	}
 }
 
@@ -351,7 +353,6 @@ func (conn *ConnWithParameters) flush() {
 		fmt.Println(writeErr)
 	}
 	conn.batchMap = make(map[string]Latlng) // empty batch
-	fmt.Println("FLUSHED")
 }
 
 // createZeroTest creates the zeroTest variable based on the truncateSize, which is used to handle "-0." edge case
