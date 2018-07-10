@@ -36,7 +36,7 @@ type ConnWithParameters struct {
 	flushTime         time.Time           // time that represents the time of the last flush
 	truncateSize      int                 // int that represents the truncation size of a specific point, used in bucketPoints
 	zeroTest          string              // string used to compare to handle truncation edge case
-	ConnErr           string              `json:"Error"` // ConnErr used to hold errors that are sent to connections
+	ConnErr           ConnErr             // ConnErr used to hold errors that are sent to connections
 	mutex             sync.RWMutex        // mutex used for concurrent reading and writing
 }
 
@@ -46,6 +46,11 @@ type msg struct {
 	Filter   []string `json:"Filter,omitempty"`   // []string that holds the current active filters received from a websocket
 	//startTime <type> `json:"startTime, omitempty"`
 	//endTime <type> `json:"endTime, omitempty"`
+}
+
+// ConnErr is the struct for error messages sent over websocket
+type ConnErr struct {
+	Err string `json:"Error"`
 }
 
 // NewConnectionManager initializes the connectionManager
@@ -105,7 +110,7 @@ func (c *ConnectionManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		flushTime:         time.Now(),
 		truncateSize:      c.defaultTruncateSize,
 		zeroTest:          "",
-		ConnErr:           "",
+		ConnErr:           ConnErr{},
 		mutex:             sync.RWMutex{},
 	}
 	// now listen for messages for this created websocket
@@ -139,7 +144,7 @@ func (conn *ConnWithParameters) readWS() {
 		// unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
 			conn.mutex.RLock()
-			conn.ConnErr = "401: Invalid input"
+			conn.ConnErr.Err = "401: Invalid input"
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			conn.mutex.RUnlock()
 			if err != nil {
@@ -201,19 +206,19 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 	exists, document, err := c.cbConn.ClientExists(conn.clientID)
 	if err != nil {
 		if err == gocb.ErrTimeout {
-			conn.ConnErr = "501: Unable to validate clientID"
+			conn.ConnErr.Err = "501: Unable to validate clientID"
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			if err != nil {
 				fmt.Println(err)
 			}
 		} else if err == gocb.ErrBusy {
-			conn.ConnErr = "502: Unable to validate clientID"
+			conn.ConnErr.Err = "502: Unable to validate clientID"
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			if err != nil {
 				fmt.Println(err)
 			}
 		} else {
-			conn.ConnErr = "503: Unable to validate clientID"
+			conn.ConnErr.Err = "503: Unable to validate clientID"
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			if err != nil {
 				fmt.Println(err)
@@ -239,7 +244,7 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 		}
 	} else {
 		// if clientID does not exist in couchbase
-		conn.ConnErr = "401: The ClientID is not valid"
+		conn.ConnErr.Err = "401: The ClientID is not valid"
 		err = conn.ws.WriteJSON(conn.ConnErr)
 		if err != nil {
 			fmt.Println(err)
