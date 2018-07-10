@@ -44,7 +44,7 @@ Loop:
 		// In case of error
 		case err := <-consumer.Errors():
 			fmt.Println(err)
-		// Print consumer messages
+			// Print consumer messages
 		case msg := <-consumer.Messages():
 			//initialize variable to hold data from kafka data
 			var kafkaData KafkaData
@@ -86,12 +86,10 @@ Loop:
 							conn.flush()
 						}
 						//add KafkaData of just eventID, lat, lng to batchArray
-						conn.mutex.Lock()
 						conn.bucketPoints(Point{
 							Lat: kafkaData.Latitude,
 							Lng: kafkaData.Longitude,
 						})
-						conn.mutex.Unlock()
 					}
 				}
 				c.mutex.Unlock()
@@ -111,6 +109,7 @@ Loop:
 func (conn *ConnWithParameters) updateAvailableFilters(newFilter string) {
 	// Add new filter to map
 	conn.mutex.Lock()
+	defer conn.mutex.Unlock()
 	conn.allFilters[newFilter] = struct{}{}
 	//initilize slice for sending to client
 	var clientEvents []string
@@ -120,7 +119,6 @@ func (conn *ConnWithParameters) updateAvailableFilters(newFilter string) {
 	}
 	//send slice to client
 	err := conn.ws.WriteJSON(clientEvents)
-	conn.mutex.Unlock()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -134,21 +132,15 @@ func (conn *ConnWithParameters) bucketPoints(rawPt Point) {
 	lngSlice := strings.SplitAfter(rawPt.Lng, ".")
 
 	// Truncate second half of slices
-	conn.mutex.Lock()
 	latSlice[1] = conn.truncate(latSlice[1])
 	lngSlice[1] = conn.truncate(lngSlice[1])
-	conn.mutex.Unlock()
 
 	//check for truncating edge case
 	if strings.Contains(latSlice[0], "-0.") {
-		conn.mutex.RLock()
 		latSlice = conn.checkZero(latSlice)
-		conn.mutex.RUnlock()
 	}
 	if strings.Contains(lngSlice[0], "-0.") {
-		conn.mutex.RLock()
 		lngSlice = conn.checkZero(lngSlice)
-		conn.mutex.RUnlock()
 	}
 
 	// Combine the split strings together
