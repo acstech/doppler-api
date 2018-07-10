@@ -43,11 +43,12 @@ func main() {
 	// }
 
 	//connect to couchbase
-	cbConn := &couchbase.Couchbase{}
-	err = cbConn.ConnectToCB(cbEnv)
+	cbConn := &couchbase.Couchbase{} // create instance of couchbase connection
+	err = cbConn.ConnectToCB(cbEnv)  // connect to couchbase with env variables
 	if err != nil {
 		panic(fmt.Errorf("error connecting to couchbase: %v", err))
 	}
+	// close couchbase connection on return
 	defer func() {
 		err = cbConn.Bucket.Close()
 		fmt.Println("Closed Couchbase")
@@ -60,11 +61,12 @@ func main() {
 	fmt.Println()
 
 	//connect to Kafka and create consumer
-	consumer, err := createConsumer(kafkaCon, kafkaTopic)
+	consumer, err := createConsumer(kafkaCon, kafkaTopic) // create instance of consumer with env variables
 	if err != nil {
 		fmt.Println(err)
 	}
 
+	// close consumer on return
 	defer func() {
 		err = consumer.Close()
 		fmt.Println("Closed Kafka")

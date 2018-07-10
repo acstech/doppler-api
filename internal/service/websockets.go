@@ -54,7 +54,7 @@ func NewConnectionManager(maxBS int, minBS int, batchMilli int, tSize int, cbCon
 	// initialize connections
 	connections := make(map[string]map[*ConnWithParameters]struct{})
 
-	//intialize upgrader
+	// intialize upgrader
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			return true
@@ -114,7 +114,7 @@ func (c *ConnectionManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // readWS continually reads messages from a ConnWithParameters' websocket, initializes connection parameters and updates live filters when necessary
 func (conn *ConnWithParameters) readWS() {
-	defer conn.ws.Close() //close the connection whenever readWS returns
+	defer conn.ws.Close() // close the connection whenever readWS returns
 	// boolean used to keep up if this websocket has been connected
 	connected := false
 
@@ -154,11 +154,12 @@ func (conn *ConnWithParameters) readWS() {
 				connected = true
 				// start checking if need to flush batch but iff no other checking has started
 				if len(conn.connectionManager.connections) == 1 && conn.connectionManager.intervalFlushStarted == false {
-					conn.connectionManager.intervalFlushStarted = true
-					go conn.connectionManager.intervalFlush()
+					conn.connectionManager.intervalFlushStarted = true // update connection manager interval flush start
+					go conn.connectionManager.intervalFlush()          // start interval flushing
 				}
 
 			} else {
+				// if regisitering was not successful, remove the connection from the connection manager
 				conn.connectionManager.unregisterConn(conn)
 			}
 			// continue to next for loop iteration, skipping updating filters on first iteration
@@ -172,19 +173,22 @@ func (conn *ConnWithParameters) readWS() {
 
 // registerConn updates a ConnWithParameters' parameters based on the first message sent over the websocket and adds it adds the connection to the connectionManager's connnections
 func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) bool {
+	// write lock
 	c.mutex.Lock()
 	conn.mutex.Lock()
 
+	// unlock on return
 	defer func() {
 		c.mutex.Unlock()
 		conn.mutex.Unlock()
 	}()
+
 	// update conn with new parameters
 	// add clientID to connection
 	conn.clientID = message.ClientID
+
 	// check if client is already connected on another websocket
 	// if client has not been connected, create new connection map
-
 	if _, contains := c.connections[conn.clientID]; !contains {
 		c.connections[conn.clientID] = make(map[*ConnWithParameters]struct{})
 	}
@@ -215,7 +219,7 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 				fmt.Println(err)
 			}
 		}
-		return false
+		return false // registering not successful
 	}
 	// if client exists in Couchbase
 	if exists {
@@ -241,20 +245,21 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 			fmt.Println(err)
 		}
 
-		return false
+		return false // registering not successful
 	}
 
-	// initlize zero test for bucketing
+	// initlize zero test for bucketing based on conneciton manager default truncation size
 	conn.zeroTest = createZeroTest(conn.connectionManager.defaultTruncateSize)
 
-	return true
+	return true // register successful
 }
 
 // unregisterConn removes the connection from the client, if the client has no connections, removes the client
 func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
-	c.mutex.Lock()
-	conn.mutex.RLock()
+	c.mutex.Lock()     // write lock
+	conn.mutex.RLock() // read lock
 
+	// unlock on return
 	defer func() {
 		c.mutex.Unlock()
 		conn.mutex.RUnlock()
@@ -273,8 +278,8 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 
 // updateActiveFilters removes the current filters and sets filter equal to the new filters found in the message
 func (conn *ConnWithParameters) updateActiveFilters(newFilters []string) {
-	conn.mutex.Lock()
-	defer conn.mutex.Unlock()
+	conn.mutex.Lock()         // write lock
+	defer conn.mutex.Unlock() // unlock on return
 
 	conn.activeFilters = make(map[string]struct{}) // empty current filters
 	// iterate through client message filter array and add the elements to the connection filter slice
@@ -287,11 +292,11 @@ func (conn *ConnWithParameters) updateActiveFilters(newFilters []string) {
 func (c *ConnectionManager) intervalFlush() {
 	// continuously check if need to flush because of time interval
 	for {
-		c.mutex.RLock()
+		c.mutex.RLock() // read lock
 		// check to see if any clients are connected
 		if len(c.connections) == 0 { // no clients are connected, so free up the CPU
 			c.intervalFlushStarted = false
-			c.mutex.RUnlock()
+			c.mutex.RUnlock() // unlock on return
 			return
 		}
 
@@ -306,21 +311,21 @@ func (c *ConnectionManager) intervalFlush() {
 						conn.flushTime = time.Now()
 					}
 				}
-				conn.mutex.Unlock()
+				conn.mutex.Unlock() // unlock
 			}
 		}
-		c.mutex.RUnlock()
+		c.mutex.RUnlock() //unlock
 	}
 }
 
 // flush marshals the batch to json, sends the batch over the conn's websocket, and emptys the batch
 func (conn *ConnWithParameters) flush() {
 	batch, marshalErr := json.Marshal(conn.batchMap) // marshal to type BatchStruct
-
 	if marshalErr != nil {
 		fmt.Println("batch marshal error")
 		fmt.Println(marshalErr)
 	}
+
 	writeErr := conn.ws.WriteJSON(string(batch)) // send batch to client
 	if writeErr != nil {
 		fmt.Println(writeErr)

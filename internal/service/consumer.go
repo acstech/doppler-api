@@ -53,7 +53,7 @@ Loop:
 				fmt.Println(err)
 			}
 			// Check if ClientID exists
-			c.mutex.RLock()
+			c.mutex.RLock() // read lock connection manager per message
 			_, contains := c.connections[kafkaData.ClientID]
 
 			// if clientID exists, lock state, and send to client's connections
@@ -62,7 +62,7 @@ Loop:
 				clientConnections := c.connections[kafkaData.ClientID]
 				// iterate over client connections
 				for conn := range clientConnections {
-					conn.mutex.Lock()
+					conn.mutex.Lock() // write lock connection because read filters and write to buckets
 
 					// Check if consume message has a different filter than allfilters
 					_, contains := conn.allFilters[kafkaData.EventID]
