@@ -55,46 +55,40 @@ Loop:
 			// Check if ClientID exists
 			c.mutex.RLock()
 			_, contains := c.connections[kafkaData.ClientID]
-			c.mutex.RUnlock()
 
 			// if clientID exists, lock state, and send to client's connections
 			if contains {
 				// If client is connected, get map of connections
-				c.mutex.Lock()
 				clientConnections := c.connections[kafkaData.ClientID]
-				//iterate over client connections
+				// iterate over client connections
 				for conn := range clientConnections {
+					conn.mutex.Lock()
+
 					// Check if consume message has a different filter than allfilters
-					conn.mutex.RLock()
 					_, contains := conn.allFilters[kafkaData.EventID]
-					conn.mutex.RUnlock()
 					if !contains {
 						conn.updateAvailableFilters(kafkaData.EventID)
+						fmt.Println("UPDATED AVAILABLE FILTERS")
 					}
 
-					//if connection filter has KafkaData eventID, send data
-					conn.mutex.RLock()
+					// if connection filter has KafkaData eventID, send data
 					_, hasEvent := conn.activeFilters[kafkaData.EventID]
-					conn.mutex.RUnlock()
 					if hasEvent {
-						//check if batchArray is full, if so, flush
-						conn.mutex.RLock()
-						batchSize := len(conn.batchMap)
-						conn.mutex.RUnlock()
-
-						if batchSize == c.maxBatchSize {
+						// check if batchArray is full, if so, flush
+						if len(conn.batchMap) == c.maxBatchSize {
+							fmt.Println("SIZE FLUSH")
 							conn.flush()
 						}
-						//add KafkaData of just eventID, lat, lng to batchArray
+						// add KafkaData of just eventID, lat, lng to batchArray
 						conn.bucketPoints(Point{
 							Lat: kafkaData.Latitude,
 							Lng: kafkaData.Longitude,
 						})
+						conn.mutex.Unlock()
 					}
 				}
-				c.mutex.Unlock()
 			}
-			// Service interruption
+			c.mutex.RUnlock()
 		case <-quit:
 			fmt.Println("Interrupt detected")
 			break Loop
@@ -108,8 +102,6 @@ Loop:
 // updateAvailableFilters adds a new filter found in consume messages to allFilters and sends the available filters to the client
 func (conn *ConnWithParameters) updateAvailableFilters(newFilter string) {
 	// Add new filter to map
-	conn.mutex.Lock()
-	defer conn.mutex.Unlock()
 	conn.allFilters[newFilter] = struct{}{}
 	//initilize slice for sending to client
 	var clientEvents []string
@@ -126,6 +118,7 @@ func (conn *ConnWithParameters) updateAvailableFilters(newFilter string) {
 
 // bucketPoints takes a connection and a point and puts them in the batch of buckets as necessary
 func (conn *ConnWithParameters) bucketPoints(rawPt Point) {
+
 	// Truncate each item in batch
 	// Split float by decimal
 	latSlice := strings.SplitAfter(rawPt.Lat, ".")
@@ -162,33 +155,23 @@ func (conn *ConnWithParameters) bucketPoints(rawPt Point) {
 	// Bucketing
 	// check if bucket exists
 	// if it does exists, increase the count
-	conn.mutex.RLock()
 	_, contains := conn.batchMap[bucket]
-	conn.mutex.RUnlock()
 	if contains {
-		conn.mutex.RLock()
 		value := conn.batchMap[bucket] //get the value of the bucket
-		conn.mutex.RUnlock()
 
 		value.Count++ //increase the count
 
-		conn.mutex.Lock()
 		conn.batchMap[bucket] = value //add the new count to the point
-		conn.mutex.Unlock()
 
 	} else { //otherwise, add the point with the count
-		conn.mutex.Lock()
 		conn.batchMap[bucket] = pt
-		conn.mutex.Unlock()
 	}
 }
 
 // trucate takes a string and changes its length based on truncateSize
 func (conn *ConnWithParameters) truncate(s string) string {
 	// get truncate size
-	conn.mutex.RLock()
 	tSize := conn.truncateSize
-	conn.mutex.RUnlock()
 
 	if len(s) < tSize {
 		//padding if smaller
@@ -205,9 +188,7 @@ func (conn *ConnWithParameters) truncate(s string) string {
 func (conn *ConnWithParameters) checkZero(coord []string) []string {
 	//compare the decimals of the "-0." case to the zeroTest
 	//if they are equal, remove the "-"
-	conn.mutex.RLock()
 	zeroTest := conn.zeroTest
-	conn.mutex.RUnlock()
 	if strings.Compare(coord[1], zeroTest) == 0 {
 		coord[0] = "0."
 		return coord
