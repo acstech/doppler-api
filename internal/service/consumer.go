@@ -54,7 +54,6 @@ Loop:
 			}
 			// Check if ClientID exists
 			c.mutex.RLock()
-			// fmt.Println("c rlock consume")
 			_, contains := c.connections[kafkaData.ClientID]
 
 			// if clientID exists, lock state, and send to client's connections
@@ -64,13 +63,11 @@ Loop:
 				// iterate over client connections
 				for conn := range clientConnections {
 					conn.mutex.Lock()
-					fmt.Println("conn lock consume")
 
 					// Check if consume message has a different filter than allfilters
 					_, contains := conn.allFilters[kafkaData.EventID]
 					if !contains {
 						conn.updateAvailableFilters(kafkaData.EventID)
-						fmt.Println("UPDATED AVAILABLE FILTERS")
 					}
 
 					// if connection filter has KafkaData eventID, send data
@@ -78,21 +75,19 @@ Loop:
 					if hasEvent {
 						// check if batchArray is full, if so, flush
 						if len(conn.batchMap) == c.maxBatchSize {
-							fmt.Println("size flush")
 							conn.flush()
 						}
+
 						// add KafkaData of just eventID, lat, lng to batchArray
 						conn.bucketPoints(Point{
 							Lat: kafkaData.Latitude,
 							Lng: kafkaData.Longitude,
 						})
-						conn.mutex.Unlock()
-						fmt.Println("conn unlock consume")
 					}
+					conn.mutex.Unlock()
 				}
 			}
 			c.mutex.RUnlock()
-			// fmt.Println("c runlock consume")
 		case <-quit:
 			fmt.Println("Interrupt detected")
 			break Loop

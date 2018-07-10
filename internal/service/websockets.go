@@ -82,12 +82,9 @@ func NewConnectionManager(maxBS int, minBS int, batchMilli int, tSize int, cbCon
 // ServeHTTP takes in a TCP request, upgrades that request to a websocket, and intializes the connections' parameters
 func (c *ConnectionManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Upgrade HTTP server connection to the WebSocket protocol
-	fmt.Println("Serving HTTP")
 	c.mutex.RLock()
-	fmt.Println("c rlock serve")
 	ws, err := c.upgrader.Upgrade(w, r, nil)
 	c.mutex.RUnlock()
-	fmt.Println("c unrlock serve")
 	if err != nil {
 		ws.Close() //close the connection just in case
 		w.WriteHeader(http.StatusInternalServerError)
@@ -125,13 +122,11 @@ func (conn *ConnWithParameters) readWS() {
 	for {
 		// read messages from client
 		_, msgBytes, err := conn.ws.ReadMessage()
-		fmt.Println("GOT MESSAGE: ", string(msgBytes))
 		// check if client closed connection
 		if err != nil {
 			// check if the client was registered
 			if connected {
 				// if client closed connection, remove connetion from clientConnections
-				fmt.Println("Closed Connection Unregister")
 				conn.connectionManager.unregisterConn(conn)
 			}
 			return // returns out of readWS
@@ -144,18 +139,15 @@ func (conn *ConnWithParameters) readWS() {
 		// unmarshal (convert bytes to msg struct)
 		if err := json.Unmarshal(msgBytes, &message); err != nil {
 			conn.mutex.RLock()
-			fmt.Println("conn rlock unmarshal err")
 			conn.ConnErr = "401: Invalid input"
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			conn.mutex.RUnlock()
-			fmt.Println("conn runlock unmarshal err")
 			if err != nil {
 				fmt.Println("readWS unmarshal msg error ", err)
 			}
 		}
 		// If havent been connected, initialize all connection parameters, first message has to be clientID
 		if !connected {
-			fmt.Println("Registering")
 			success = conn.connectionManager.registerConn(conn, message) //initilaize the connection with parameters, return the intilailized connection and if the initialization was succesful
 			if success {
 				// update connected to true
@@ -167,7 +159,6 @@ func (conn *ConnWithParameters) readWS() {
 				}
 
 			} else {
-				fmt.Println("Unsuccessful Register, Unregistering")
 				conn.connectionManager.unregisterConn(conn)
 			}
 			// continue to next for loop iteration, skipping updating filters on first iteration
@@ -175,24 +166,18 @@ func (conn *ConnWithParameters) readWS() {
 		}
 
 		// if client has already been connected, only other messages should be filter updates
-		fmt.Println("UPDATING FILTERS")
 		conn.updateActiveFilters(message.Filter)
-		fmt.Println("UPDATED FILTERS")
 	}
 }
 
 // registerConn updates a ConnWithParameters' parameters based on the first message sent over the websocket and adds it adds the connection to the connectionManager's connnections
 func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) bool {
 	c.mutex.Lock()
-	fmt.Println("c lock register")
 	conn.mutex.Lock()
-	fmt.Println("conn lock register")
 
 	defer func() {
 		c.mutex.Unlock()
-		fmt.Println("c unlock register")
 		conn.mutex.Unlock()
-		fmt.Println("conn unlock register")
 	}()
 	// update conn with new parameters
 	// add clientID to connection
@@ -268,15 +253,11 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 // unregisterConn removes the connection from the client, if the client has no connections, removes the client
 func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 	c.mutex.Lock()
-	fmt.Println("c lock unregis")
 	conn.mutex.RLock()
-	fmt.Println("conn rlock unregis")
 
 	defer func() {
 		c.mutex.Unlock()
-		fmt.Println("c unlock unregis")
 		conn.mutex.RUnlock()
-		fmt.Println("conn runlock unregis")
 	}()
 
 	fmt.Println("Connection Closed by Client")
@@ -293,11 +274,7 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 // updateActiveFilters removes the current filters and sets filter equal to the new filters found in the message
 func (conn *ConnWithParameters) updateActiveFilters(newFilters []string) {
 	conn.mutex.Lock()
-	fmt.Println("conn lock update active")
-	defer func() {
-		conn.mutex.Unlock()
-		fmt.Println("conn unlock update active")
-	}()
+	defer conn.mutex.Unlock()
 
 	conn.activeFilters = make(map[string]struct{}) // empty current filters
 	// iterate through client message filter array and add the elements to the connection filter slice
@@ -311,7 +288,6 @@ func (c *ConnectionManager) intervalFlush() {
 	// continuously check if need to flush because of time interval
 	for {
 		c.mutex.RLock()
-		// fmt.Println("c rlock interval")
 		// check to see if any clients are connected
 		if len(c.connections) == 0 { // no clients are connected, so free up the CPU
 			c.intervalFlushStarted = false
@@ -324,7 +300,6 @@ func (c *ConnectionManager) intervalFlush() {
 				// see if current time minus last flush time is greater than or equal to the set interval
 				// sub returns type Duration, batchInterval is of type Duration
 				conn.mutex.Lock()
-				// fmt.Println("conn lock interval")
 				if time.Now().Sub(conn.flushTime) >= c.batchInterval {
 					if len(conn.batchMap) >= c.minBatchSize {
 						conn.flush()
@@ -332,11 +307,9 @@ func (c *ConnectionManager) intervalFlush() {
 					}
 				}
 				conn.mutex.Unlock()
-				// fmt.Println("conn unlock interval")
 			}
 		}
 		c.mutex.RUnlock()
-		// fmt.Println("c unrlock interval")
 	}
 }
 
