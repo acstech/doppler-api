@@ -54,6 +54,7 @@ Loop:
 			}
 			// Check if ClientID exists
 			c.mutex.RLock()
+			fmt.Println("c rlock consume")
 			_, contains := c.connections[kafkaData.ClientID]
 
 			// if clientID exists, lock state, and send to client's connections
@@ -63,6 +64,7 @@ Loop:
 				// iterate over client connections
 				for conn := range clientConnections {
 					conn.mutex.Lock()
+					fmt.Println("conn lock consume")
 
 					// Check if consume message has a different filter than allfilters
 					_, contains := conn.allFilters[kafkaData.EventID]
@@ -85,10 +87,12 @@ Loop:
 							Lng: kafkaData.Longitude,
 						})
 						conn.mutex.Unlock()
+						fmt.Println("conn unlock consume")
 					}
 				}
 			}
 			c.mutex.RUnlock()
+			fmt.Println("c runlock consume")
 		case <-quit:
 			fmt.Println("Interrupt detected")
 			break Loop
