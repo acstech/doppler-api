@@ -13,6 +13,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
 	"github.com/acstech/doppler-api/internal/service"
+	_ "github.com/joho/godotenv/autoload"
 )
 
 func main() {

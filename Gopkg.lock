@@ -66,6 +66,15 @@
   version = "v1.5.3"
 
 [[projects]]
+  name = "github.com/joho/godotenv"
+  packages = [
+    ".",
+    "autoload"
+  ]
+  revision = "a79fa1e548e2c689c241d10173efd51e5d689d5b"
+  version = "v1.2.0"
+
+[[projects]]
   name = "github.com/opentracing/opentracing-go"
   packages = [
     ".",
@@ -143,6 +152,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "97a1849ffddad3bb6378f3df06763f38e74a919c80c50374dc61f0503a5ef23e"
+  inputs-digest = "b8613e6b2037454bd1cd8e45ec2e2b3164f6928474aeef81554101c2a0629d2e"
   solver-name = "gps-cdcl"
   solver-version = 1
