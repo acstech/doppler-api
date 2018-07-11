@@ -12,7 +12,7 @@ Doppler-API consumes data off Kafka served by Doppler-events and sends this data
 
 ### Prerequisites
 
-Doppler-api depends on Doppler-Events to serve its purpose. Doppler-frontend is necessary to display the data. Make sure both setup is complete for these repositories also.
+Doppler-api depends on [Doppler-Events](https://github.com/acstech/doppler-events) to serve its purpose. [Doppler-frontend](https://github.com/acstech/doppler-frontend) is necessary to display the data. Make sure both setup is complete for these repositories also.
 [See these instructions](https://github.com/acstech/doppler-events#Setup)
 
 ### Setup
