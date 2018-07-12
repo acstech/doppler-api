@@ -27,13 +27,13 @@ func GetPoints(clnt client.Client, query string) (res Responses, err error) {
 
 	q := client.NewQuery(query, DB, "s")
 	if response, err := clnt.Query(q); err == nil && response.Error() == nil {
-		//fmt.Println(response.Results)
+		// fmt.Println("Response: ", response)
 
-		for r := range response.Results {
-			var ifx InfluxResponse
-			ifx.values = response.Results[r].Series[r].Values[r]
-			res.ValArray = append(res.ValArray, ifx)
-		}
+		// for r := range response.Results {
+		// 	var ifx InfluxResponse
+		// 	ifx.values = response.Results[r].Series[r].Values[r]
+		// 	res.ValArray = append(res.ValArray, ifx)
+		// }
 	} else {
 		return res, err
 	}
