@@ -89,9 +89,6 @@ func main() {
 	connectionManager := service.NewConnectionManager(maxBatchSize, minBatchSize, batchInterval, truncateSize, cbConn)
 	influxService := service.NewInfluxService(c, truncateSize)
 
-	// create new serve mux instance
-	// mux := http.NewServeMux()
-
 	// handle websocket requests
 	http.Handle("/receive/ws", connectionManager)
 

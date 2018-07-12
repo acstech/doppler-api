@@ -5,32 +5,35 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
-	client "github.com/influxdata/influxdb/client/v2"
+	influx "github.com/influxdata/influxdb/client/v2"
 )
 
 type InfluxService struct {
-	client       client.Client
+	client       influx.Client
 	truncateSize int
 }
 
-type influxQuery struct {
+type ajaxQuery struct {
 	clientID  string
 	events    []string
-	startTime int
+	startTime int64
 	duration  time.Duration
 }
 
 type batch struct {
 	batchMap map[string]Latlng
 }
-type InfluxMsg struct {
+
+// AjaxRsp is the struct for sending responses
+type AjaxRsp struct {
 	Response string `json:"Response"`
 }
 
 // NewInfluxService ...
-func NewInfluxService(client client.Client, tSize int) *InfluxService {
+func NewInfluxService(client influx.Client, tSize int) *InfluxService {
 	return &InfluxService{
 		client:       client,
 		truncateSize: tSize,
@@ -47,13 +50,15 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	clientID := requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
 
 	// get list of events
-	events := requestQuery["filters[]"] // get filters ()
+	events := requestQuery["filters[]"] // get filters (.Query adds the "[]" to the key name)
 
 	// get start time
-	startTime, err := strconv.Atoi(requestQuery["startTime"][0]) // get startTime (index zero since only have one ID), convert string of time to int
+	tmp, err := strconv.ParseInt(requestQuery["startTime"][0], 10, 64)
 	if err != nil {
 		fmt.Println("Start Time Parse Error: ", err)
 	}
+	startTime := (tmp / 1000) - (86400 * 2) // parse time string to RFC3339 for influx
+
 	// get duration
 	ms, err := strconv.Atoi(requestQuery["duration"][0]) // get duration (index zero since only have one ID), convert string of milliseconds to int
 	duration := time.Duration(ms)                        // convert int to duration
@@ -62,22 +67,30 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// create influxQuery instance based on r's URL query
-	q := &influxQuery{
+	ajaxQ := &ajaxQuery{
 		clientID:  clientID,
 		events:    events,
 		startTime: startTime,
 		duration:  duration,
 	}
-	fmt.Println("Query: ", q)
+	fmt.Println("Query: ", ajaxQ)
 
 	// create query string
+	fmt.Println("Start Time: ", startTime)
+	q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %d AND clientID='%s' AND eventID =~ /(?:%s)/", ajaxQ.startTime, ajaxQ.clientID, strings.Join(ajaxQ.events, "|"))
 
 	// getPoints
+	// _, err = infxHelper.GetPoints(c.client, q)
+	if err != nil {
+		fmt.Println("Influx Query Error: ", err)
+	}
+	fmt.Println("Query: ", q)
+	// fmt.Println("influx response: ", influxRsp)
 
 	// bucket
 
 	// Test response
-	msg := InfluxMsg{
+	msg := AjaxRsp{
 		Response: "Hello, got your request",
 	}
 	response, err := json.Marshal(msg)
