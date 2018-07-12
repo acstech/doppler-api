@@ -47,7 +47,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	clientID := requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
 
 	// get list of events
-	events := requestQuery["filters"] // used map directly since need []string
+	events := requestQuery["filters[]"] // get filters ()
 
 	// get start time
 	startTime, err := strconv.Atoi(requestQuery["startTime"][0]) // get startTime (index zero since only have one ID), convert string of time to int
