@@ -3,8 +3,9 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"strconv"
+	"time"
 
 	client "github.com/influxdata/influxdb/client/v2"
 )
@@ -18,7 +19,7 @@ type influxQuery struct {
 	clientID  string
 	events    []string
 	startTime int
-	endTime   int
+	duration  time.Duration
 }
 
 type batch struct {
@@ -37,17 +38,43 @@ func NewInfluxService(client client.Client, tSize int) *InfluxService {
 }
 
 func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// create influxQuery instance based on r
+	// get request query
+	fmt.Println("Got Request: ", r)
+	requestQuery := r.URL.Query()
+
+	// get query values
+	// get clientID
+	clientID := requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
+
+	// get list of events
+	events := requestQuery["filters"] // used map directly since need []string
+
+	// get start time
+	startTime, err := strconv.Atoi(requestQuery["startTime"][0]) // get startTime (index zero since only have one ID), convert string of time to int
+	if err != nil {
+		fmt.Println("Start Time Parse Error: ", err)
+	}
+	// get duration
+	ms, err := strconv.Atoi(requestQuery["duration"][0]) // get duration (index zero since only have one ID), convert string of milliseconds to int
+	duration := time.Duration(ms)                        // convert int to duration
+	if err != nil {
+		fmt.Println("Duration Parse Error: ", err)
+	}
+
+	// create influxQuery instance based on r's URL query
+	q := &influxQuery{
+		clientID:  clientID,
+		events:    events,
+		startTime: startTime,
+		duration:  duration,
+	}
+	fmt.Println("Query: ", q)
 
 	// create query string
 
 	// getPoints
 
 	// bucket
-
-	// Test request
-	fmt.Println("Got Request: ", r)
-	fmt.Println(r.Body)
 
 	// Test response
 	msg := InfluxMsg{
@@ -58,10 +85,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 	}
 
-	w.Header().Set("Response Header", "This is the Response Header")
-	w.Header().Set("access-control-allow-methods", "POST")
+	w.Header().Set("access-control-allow-methods", "GET")
 	w.Header().Set("access-control-allow-origin", "*")
-	w.Header().Set("Content-type", "Access-Control-Allow-Headers")
-	io.WriteString(w, string(response))
-	return
+	w.Write(response)
 }
