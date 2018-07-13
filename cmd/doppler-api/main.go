@@ -161,10 +161,9 @@ func createConsumer(kafkaCon string, kafkaTopic string) (sarama.PartitionConsume
 // 	if err != nil {
 // 		fmt.Println(err)
 // 	} else {
-// 		i := 0
-// 		for i < len(res.ValArray) {
-// 			fmt.Println(res.ValArray[i])
-// 			i = i + 1
-// 		}
+// 	for a := range res.Values {
+//			res2 := res.Values[a] //    [][]interface {}
+//			fmt.Println(res2)
+//		}
 // 	}
 // }

@@ -14,29 +14,27 @@ const (
 	Measure = "dopplerDataHistory"
 )
 
-type InfluxResponse struct {
-	values []interface{}
-}
-
-type Responses struct {
-	ValArray []InfluxResponse
+type Response struct {
+	Tags   []string
+	Values [][]interface{}
 }
 
 //GetPoints recieves a query string and returns the results from the influx client and returns the results
-func GetPoints(clnt client.Client, query string) (res Responses, err error) {
+func GetPoints(clnt client.Client, query string) (r1 Response, err error) {
 
 	q := client.NewQuery(query, DB, "s")
-	if response, err := clnt.Query(q); err == nil && response.Error() == nil {
-		//fmt.Println(response.Results)
+	response, err := clnt.Query(q)
+	if err == nil && response.Error() == nil {
+		//	fmt.Println(response.Results)
 
 		for r := range response.Results {
-			var ifx InfluxResponse
-			ifx.values = response.Results[r].Series[r].Values[r]
-			res.ValArray = append(res.ValArray, ifx)
-		}
-	} else {
-		return res, err
-	}
+			res := response.Results[r].Series[r].Values
+			b := response.Results[r].Series[r].Columns
+			r1.Tags = b
+			r1.Values = res
+			return r1, nil
 
-	return res, nil
+		}
+	}
+	return r1, err
 }
