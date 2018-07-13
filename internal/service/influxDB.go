@@ -16,20 +16,15 @@ type InfluxService struct {
 	defaultTruncateSize int           // truncation size used in bucketing
 }
 
-// ajaxQuery is the structure for the query's received from an ajax GET request from doppler-frontend
-type ajaxQuery struct {
+// request is the structure for the query's received from an ajax GET request from doppler-frontend
+type request struct {
 	clientID  string   // clientID of ajax request
 	events    []string // slice of event filters
 	startTime string   // Unix start time
 	endTime   string   // Unix end time
 
-	truncateSize int
-	zeroTest     string
-}
-
-// AjaxRsp is the struct for sending responses
-type AjaxRsp struct {
-	Response string `json:"Response"`
+	truncateSize int    // int uesd to determine how much points are truncated during bucketing
+	zeroTest     string // string used to compare to handle truncation edge case
 }
 
 // NewInfluxService creates an instance of an influxDB query service
@@ -64,7 +59,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	zTest := createZeroTest(c.defaultTruncateSize)
 
 	// create influxQuery instance based on r's URL query
-	ajaxQ := &ajaxQuery{
+	request := &request{
 		clientID:     clientID,
 		events:       events,
 		startTime:    startTime,
@@ -74,13 +69,13 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// query InfluxDB
-	influxData, err := ajaxQ.queryInfluxDB(c)
+	influxData, err := request.queryInfluxDB(c)
 	if err != nil {
 		fmt.Println("Query InfluxDB Error: ", err)
 	}
 
 	// bucket
-	batchMap := ajaxQ.influxBucketPoints(influxData)
+	batchMap := request.influxBucketPoints(influxData)
 	batch, err := json.Marshal(batchMap)
 	if err != nil {
 		fmt.Println(err)
@@ -93,9 +88,9 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // queryInfluxDB takes an InfluxService and an ajaxQuery, creates a query string, queries InfluxDB, parses query response
 // and returns the results
-func (ajaxQ *ajaxQuery) queryInfluxDB(c *InfluxService) ([]infxHelper.Point, error) {
+func (request *request) queryInfluxDB(c *InfluxService) ([]infxHelper.Point, error) {
 	// create query string
-	q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %s AND time <= %s AND clientID='%s' AND eventID =~ /(?:%s)/", ajaxQ.startTime, ajaxQ.endTime, ajaxQ.clientID, strings.Join(ajaxQ.events, "|"))
+	q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %s AND time <= %s AND clientID='%s' AND eventID =~ /(?:%s)/", request.startTime, request.endTime, request.clientID, strings.Join(request.events, "|"))
 
 	// getPoints
 	response, err := infxHelper.GetPoints(c.client, q)
@@ -105,7 +100,7 @@ func (ajaxQ *ajaxQuery) queryInfluxDB(c *InfluxService) ([]infxHelper.Point, err
 	return response, nil
 }
 
-func (ajaxQ *ajaxQuery) influxBucketPoints(data []infxHelper.Point) map[string]Latlng {
+func (request *request) influxBucketPoints(data []infxHelper.Point) map[string]Latlng {
 
 	batchMap := make(map[string]Latlng)
 
@@ -117,15 +112,15 @@ func (ajaxQ *ajaxQuery) influxBucketPoints(data []infxHelper.Point) map[string]L
 			lngSlice := strings.SplitAfter(data[i].Lng, ".")
 
 			// Truncate second half of slices
-			latSlice[1] = truncate(latSlice[1], ajaxQ.truncateSize)
-			lngSlice[1] = truncate(lngSlice[1], ajaxQ.truncateSize)
+			latSlice[1] = truncate(latSlice[1], request.truncateSize)
+			lngSlice[1] = truncate(lngSlice[1], request.truncateSize)
 
 			//check for truncating edge case
 			if strings.Contains(latSlice[0], "-0.") {
-				latSlice = checkZero(latSlice, ajaxQ.zeroTest)
+				latSlice = checkZero(latSlice, request.zeroTest)
 			}
 			if strings.Contains(lngSlice[0], "-0.") {
-				lngSlice = checkZero(lngSlice, ajaxQ.zeroTest)
+				lngSlice = checkZero(lngSlice, request.zeroTest)
 			}
 
 			// Combine the split strings together
