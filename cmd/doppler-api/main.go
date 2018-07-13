@@ -13,6 +13,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
 	"github.com/acstech/doppler-api/internal/service"
+	client "github.com/influxdata/influxdb/client/v2"
 	_ "github.com/joho/godotenv/autoload"
 )
 
@@ -24,24 +25,25 @@ func main() {
 	if err != nil {
 		fmt.Println("kafka parse error: ", err)
 	}
+	influxCon := os.Getenv("CONNECTOR_CONNECT_INFLUX_URL")
+	influxUser := os.Getenv("CONNECTOR_CONNECT_INFLUX_USERNAME")
+	influxPassword := os.Getenv("CONNECTOR_CONNECT_INFLUX_PASSWORD")
 
-	// influxCon := os.Getenv("INFLUX_CONN")
-
-	// // creates influx client
-	// c, err := client.NewHTTPClient(client.HTTPConfig{
-	// 	Addr:     "http://localhost:8086",
-	// 	Username: "root",
-	// 	Password: "root",
-	// })
-	// if err != nil {
-	// 	panic(fmt.Errorf("error connecting to influx: %v", err))
-	// }
-	// defer func() {
-	// 	err = c.Close()
-	// 	if err != nil {
-	// 		fmt.Println("Closing InfluxDB Error: ", err)
-	// 	}
-	// }
+	// creates influx client
+	c, err := client.NewHTTPClient(client.HTTPConfig{
+		Addr:     influxCon,
+		Username: influxUser,
+		Password: influxPassword,
+	})
+	if err != nil {
+		panic(fmt.Errorf("error connecting to influx: %v", err))
+	}
+	defer func() {
+		err = c.Close()
+		if err != nil {
+			fmt.Println("Closing InfluxDB Error: ", err)
+		}
+	}()
 
 	//connect to couchbase
 	cbConn := &couchbase.Couchbase{} // create instance of couchbase connection
@@ -83,20 +85,24 @@ func main() {
 	batchInterval := 2000
 	truncateSize := 1
 
-	//create an instance of our service
+	// create an instance of our websocket service
 	connectionManager := service.NewConnectionManager(maxBatchSize, minBatchSize, batchInterval, truncateSize, cbConn)
+	influxService := service.NewInfluxService(c, truncateSize)
 
-	//handle any websocket requests
+	// handle websocket requests
 	http.Handle("/receive/ws", connectionManager)
 
-	//start the consumer
+	// handle ajax requests
+	http.Handle("/receive/ajax", influxService)
+
+	// start the consumer
 	go connectionManager.Consume(consumer)
 
-	//listen for interrupt signal
+	// listen for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit)
 
-	//listen for calls to server
+	// listen for calls to server
 	server := &http.Server{Addr: ":8000"}
 	go func() {
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
