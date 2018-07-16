@@ -66,6 +66,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// get the ajax index
 	index := requestQuery["index"][0]
 
+	// create zero test for bucketing
 	zTest := createZeroTest(c.defaultTruncateSize)
 
 	// create influxQuery instance based on r's URL query
@@ -94,14 +95,18 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Index: request.index,
 		Batch: batchMap,
 	}
+
 	// marshal the response for sending
 	response, err := json.Marshal(res)
 	if err != nil {
 		fmt.Println(err)
 	}
 
+	// set ajax response headers
 	w.Header().Set("access-control-allow-methods", "GET")
 	w.Header().Set("access-control-allow-origin", "*")
+
+	// write response data
 	w.Write(response)
 }
 
