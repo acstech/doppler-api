@@ -22,9 +22,16 @@ type request struct {
 	events    []string // slice of event filters
 	startTime string   // Unix start time
 	endTime   string   // Unix end time
+	index     string   // the index of the ajax request
 
 	truncateSize int    // int uesd to determine how much points are truncated during bucketing
 	zeroTest     string // string used to compare to handle truncation edge case
+}
+
+// response is the structure for the reponse to a ajax request
+type response struct {
+	Index string            // represents the index of the ajax call
+	Batch map[string]Latlng // the batch of points for the ajax call
 }
 
 // NewInfluxService creates an instance of an influxDB query service
@@ -38,7 +45,7 @@ func NewInfluxService(client influx.Client, tSize int) *InfluxService {
 // ServeHTTP handles AJAX GET Requests from doppler-frontend
 func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// get request query
-	fmt.Println("Got Request: ", r)
+	fmt.Println("Got Request: ", r.Host)
 	requestQuery := r.URL.Query()
 
 	// get query values
@@ -56,14 +63,19 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// endTime := requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
 	endTime := requestQuery["endTime"][0]
 
+	// get the ajax index
+	index := requestQuery["index"][0]
+
 	zTest := createZeroTest(c.defaultTruncateSize)
 
 	// create influxQuery instance based on r's URL query
 	request := &request{
-		clientID:     clientID,
-		events:       events,
-		startTime:    startTime,
-		endTime:      endTime,
+		clientID:  clientID,
+		events:    events,
+		startTime: startTime,
+		endTime:   endTime,
+		index:     index,
+
 		zeroTest:     zTest,
 		truncateSize: c.defaultTruncateSize,
 	}
@@ -76,14 +88,21 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// bucket
 	batchMap := request.influxBucketPoints(influxData)
-	batch, err := json.Marshal(batchMap)
+
+	// create response
+	res := response{
+		Index: request.index,
+		Batch: batchMap,
+	}
+	// marshal the response for sending
+	response, err := json.Marshal(res)
 	if err != nil {
 		fmt.Println(err)
 	}
 
 	w.Header().Set("access-control-allow-methods", "GET")
 	w.Header().Set("access-control-allow-origin", "*")
-	w.Write(batch)
+	w.Write(response)
 }
 
 // queryInfluxDB takes an InfluxService and an ajaxQuery, creates a query string, queries InfluxDB, parses query response
