@@ -25,6 +25,12 @@ type request struct {
 
 	truncateSize int    // int uesd to determine how much points are truncated during bucketing
 	zeroTest     string // string used to compare to handle truncation edge case
+	index        string
+}
+
+type response struct {
+	Batch map[string]Latlng `json:"Data"`
+	Index string            `json:"Index"`
 }
 
 // NewInfluxService creates an instance of an influxDB query service
@@ -56,6 +62,8 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// endTime := requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
 	endTime := requestQuery["endTime"][0]
 
+	index := requestQuery["index"][0]
+
 	zTest := createZeroTest(c.defaultTruncateSize)
 
 	// create influxQuery instance based on r's URL query
@@ -76,21 +84,31 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// bucket
 	batchMap := request.influxBucketPoints(influxData)
-	batch, err := json.Marshal(batchMap)
-	if err != nil {
-		fmt.Println(err)
+	// batch, err := json.Marshal(batchMap)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// }
+
+	res := response{
+		Batch: batchMap,
+		Index: index,
 	}
 
 	w.Header().Set("access-control-allow-methods", "GET")
 	w.Header().Set("access-control-allow-origin", "*")
-	w.Write(batch)
+	jres, err := json.Marshal(res)
+	fmt.Println("Response: ", string(jres))
+	if err != nil {
+		fmt.Print("Marshalling response: ", err)
+	}
+	w.Write(jres)
 }
 
 // queryInfluxDB takes an InfluxService and an ajaxQuery, creates a query string, queries InfluxDB, parses query response
 // and returns the results
 func (request *request) queryInfluxDB(c *InfluxService) ([]infxHelper.Point, error) {
 	// create query string
-	q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %s AND time <= %s AND clientID='%s' AND eventID =~ /(?:%s)/", request.startTime, request.endTime, request.clientID, strings.Join(request.events, "|"))
+	q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %s AND time <= %s AND clientID='%s' AND eventID =~ /(?:%s)/ LIMIT 1", request.startTime, request.endTime, request.clientID, strings.Join(request.events, "|"))
 
 	// getPoints
 	response, err := infxHelper.GetPoints(c.client, q)
