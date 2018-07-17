@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	infxHelper "github.com/acstech/doppler-api/internal/influx"
 	influx "github.com/influxdata/influxdb/client/v2"
@@ -45,7 +46,7 @@ func NewInfluxService(client influx.Client, tSize int) *InfluxService {
 // ServeHTTP handles AJAX GET Requests from doppler-frontend
 func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// get request query
-	fmt.Println("Got Request: ", r.Host)
+	// fmt.Println("Got Request: ", r.Host)
 	requestQuery := r.URL.Query()
 
 	// get query values
@@ -106,7 +107,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Missing Index"))
 		return
 	}
-	// get index
+	// // get index
 	index := requestQuery["index"][0]
 
 	// create zero test for bucketing
@@ -125,10 +126,12 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// query InfluxDB
+	start := time.Now()
 	influxData, err := request.queryInfluxDB(c)
 	if err != nil {
 		fmt.Println("Query InfluxDB Error: ", err)
 	}
+	fmt.Println("Query Duration: ", time.Now().Sub(start))
 
 	// bucket
 	batchMap := request.influxBucketPoints(influxData)
@@ -159,7 +162,8 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (request *request) queryInfluxDB(c *InfluxService) ([]infxHelper.Point, error) {
 	// create query string
 	q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %s AND time <= %s AND clientID='%s' AND eventID =~ /(?:%s)/", request.startTime, request.endTime, request.clientID, strings.Join(request.events, "|"))
-
+	// fmt.Println("Query: ", q)
+	// fmt.Println()
 	// getPoints
 	response, err := infxHelper.GetPoints(c.client, q)
 	if err != nil {
