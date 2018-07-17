@@ -49,22 +49,72 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestQuery := r.URL.Query()
 
 	// get query values
+	// intialize query variables
+	var clientID string
+	var events []string
+	var startTime string
+	var endTime string
+	var index string
+
 	// get clientID
-	clientID := requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
+	// check if request contains clientID
+	_, contains := requestQuery["clientID"]
+	if !contains {
+		fmt.Println("Request Missing Client ID")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Missing Client ID"))
+		return
+	}
+	// get clientID
+	clientID = requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
 
 	// get list of events
-	events := requestQuery["filters[]"] // get filters (.Query adds the "[]" to the key name)
+	// check if request contains filters
+	_, contains = requestQuery["filters[]"]
+	if !contains {
+		fmt.Println("Request Missing Filters")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Missing Filters"))
+		return
+	}
+	// get filters
+	events = requestQuery["filters[]"] // get filters (.Query adds the "[]" to the key name)
 
 	// get start time
-	// startTime := requestQuery["startTime"][0] // get startTime (index zero since only have one ID)
-	startTime := requestQuery["startTime"][0]
+	// check if request contains startTime
+	_, contains = requestQuery["startTime"]
+	if !contains {
+		fmt.Println("Request Missing Start Time")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Missing Start Time"))
+		return
+	}
+	// get startTime
+	startTime = requestQuery["startTime"][0] // get startTime (index zero since only have one ID)
 
-	// get duration
-	// endTime := requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
-	endTime := requestQuery["endTime"][0]
+	// get end time
+	// check if request contains end time
+	_, contains = requestQuery["endTime"]
+	if !contains {
+		fmt.Println("Request Missing End Time")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Missing End Time"))
+		return
+	}
+	// get endTime
+	endTime = requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
 
 	// get the ajax index
-	index := requestQuery["index"][0]
+	// check if request contains index
+	_, contains = requestQuery["index"]
+	if !contains {
+		fmt.Println("Request Missing Index")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Missing Index"))
+		return
+	}
+	// get index
+	index = requestQuery["index"][0]
 
 	// create zero test for bucketing
 	zTest := createZeroTest(c.defaultTruncateSize)
@@ -109,7 +159,6 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// write response data
 	w.WriteHeader(http.StatusOK)
 	w.Write(response)
-	return
 }
 
 // queryInfluxDB takes an InfluxService and an ajaxQuery, creates a query string, queries InfluxDB, parses query response
