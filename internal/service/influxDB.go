@@ -107,7 +107,9 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("access-control-allow-origin", "*")
 
 	// write response data
+	w.WriteHeader(http.StatusOK)
 	w.Write(response)
+	return
 }
 
 // queryInfluxDB takes an InfluxService and an ajaxQuery, creates a query string, queries InfluxDB, parses query response
