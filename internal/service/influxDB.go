@@ -49,13 +49,6 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestQuery := r.URL.Query()
 
 	// get query values
-	// intialize query variables
-	var clientID string
-	var events []string
-	var startTime string
-	var endTime string
-	var index string
-
 	// get clientID
 	// check if request contains clientID
 	_, contains := requestQuery["clientID"]
@@ -66,7 +59,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// get clientID
-	clientID = requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
+	clientID := requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
 
 	// get list of events
 	// check if request contains filters
@@ -78,7 +71,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// get filters
-	events = requestQuery["filters[]"] // get filters (.Query adds the "[]" to the key name)
+	events := requestQuery["filters[]"] // get filters (.Query adds the "[]" to the key name)
 
 	// get start time
 	// check if request contains startTime
@@ -90,7 +83,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// get startTime
-	startTime = requestQuery["startTime"][0] // get startTime (index zero since only have one ID)
+	startTime := requestQuery["startTime"][0] // get startTime (index zero since only have one ID)
 
 	// get end time
 	// check if request contains end time
@@ -102,7 +95,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// get endTime
-	endTime = requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
+	endTime := requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
 
 	// get the ajax index
 	// check if request contains index
@@ -114,7 +107,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// get index
-	index = requestQuery["index"][0]
+	index := requestQuery["index"][0]
 
 	// create zero test for bucketing
 	zTest := createZeroTest(c.defaultTruncateSize)
