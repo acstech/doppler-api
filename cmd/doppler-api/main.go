@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
@@ -38,12 +40,12 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error connecting to influx: %v", err))
 	}
-	defer func() {
-		err = c.Close()
-		if err != nil {
-			fmt.Println("Closing InfluxDB Error: ", err)
-		}
-	}()
+	// defer func() {
+	// 	err = c.Close()
+	// 	if err != nil {
+	// 		fmt.Println("Closing InfluxDB Error: ", err)
+	// 	}
+	// }()
 
 	//connect to couchbase
 	cbConn := &couchbase.Couchbase{} // create instance of couchbase connection
@@ -52,13 +54,13 @@ func main() {
 		panic(fmt.Errorf("error connecting to couchbase: %v", err))
 	}
 	// close couchbase connection on return
-	defer func() {
-		err = cbConn.Bucket.Close()
-		fmt.Println("Closed Couchbase")
-		if err != nil {
-			fmt.Println("Closing Couchbase Error: ", err)
-		}
-	}()
+	// defer func() {
+	// 	err = cbConn.Bucket.Close()
+	// 	fmt.Println("Closed Couchbase")
+	// 	if err != nil {
+	// 		fmt.Println("Closing Couchbase Error: ", err)
+	// 	}
+	// }()
 
 	fmt.Println("Connected to Couchbase")
 	fmt.Println()
@@ -70,13 +72,13 @@ func main() {
 	}
 
 	// close consumer on return
-	defer func() {
-		err = consumer.Close()
-		fmt.Println("Closed Kafka")
-		if err != nil {
-			fmt.Println("Closing Kafka Error: ", err)
-		}
-	}()
+	// defer func() {
+	// 	err = consumer.Close()
+	// 	fmt.Println("Closed Kafka")
+	// 	if err != nil {
+	// 		fmt.Println("Closing Kafka Error: ", err)
+	// 	}
+	// }()
 
 	//intialize websocket management and kafka consume
 	// connectionManager requires maxBatchSize, minBatchSize, batchInterval (in milliseconds), truncateSize, cbConn
@@ -84,6 +86,19 @@ func main() {
 	minBatchSize := 1
 	batchInterval := 2000
 	truncateSize := 1
+
+	// listen for interrupt signal
+	quit := make(chan os.Signal)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-quit
+		log.Println("Interrupt Received")
+		cancel()
+		c.Close()
+		cbConn.Bucket.Close()
+		consumer.Close()
+	}()
 
 	// create an instance of our websocket service
 	connectionManager := service.NewConnectionManager(maxBatchSize, minBatchSize, batchInterval, truncateSize, cbConn)
@@ -96,11 +111,7 @@ func main() {
 	http.Handle("/receive/ajax", influxService)
 
 	// start the consumer
-	go connectionManager.Consume(consumer)
-
-	// listen for interrupt signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit)
+	go connectionManager.Consume(ctx, consumer)
 
 	// listen for calls to server
 	server := &http.Server{Addr: ":8000"}
@@ -110,12 +121,14 @@ func main() {
 		}
 	}()
 
-	<-quit
+	<-ctx.Done()
 	// We received an interrupt signal, shut down.
-	if err := server.Shutdown(context.Background()); err != nil {
+	svrCtx, svrCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := server.Shutdown(svrCtx); err != nil {
 		// Error from closing listeners, or context timeout:
 		log.Printf("HTTP server Shutdown: %v", err)
 	}
+	defer svrCancel()
 	fmt.Println("Service Closed")
 }
 
