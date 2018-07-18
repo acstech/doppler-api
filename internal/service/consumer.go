@@ -1,10 +1,9 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/signal"
 	"strings"
 
 	"github.com/Shopify/sarama"
@@ -31,11 +30,8 @@ type Point struct {
 }
 
 // Consume consumes messages from Kafka
-func (c *ConnectionManager) Consume(consumer sarama.PartitionConsumer) {
+func (c *ConnectionManager) Consume(ctx context.Context, consumer sarama.PartitionConsumer) {
 	fmt.Println("Kafka Consume Started")
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit)
 
 	//continually consumes messages from Kafka
 Loop:
@@ -88,8 +84,7 @@ Loop:
 				}
 			}
 			c.mutex.RUnlock()
-		case <-quit:
-			fmt.Println("Interrupt detected")
+		case <-ctx.Done():
 			break Loop
 		}
 	}
