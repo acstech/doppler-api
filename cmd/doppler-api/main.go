@@ -15,24 +15,48 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
 	"github.com/acstech/doppler-api/internal/service"
-	client "github.com/influxdata/influxdb/client/v2"
+	influx "github.com/influxdata/influxdb/client/v2"
 	_ "github.com/joho/godotenv/autoload"
+)
+
+const (
+	addr = ":8000" // address for server
 )
 
 func main() {
 
 	// get environment variables
+	// get couchbase env variables
 	cbEnv := os.Getenv("COUCHBASE_CONN")
+
+	// get and parse kafka env variables
 	kafkaCon, kafkaTopic, err := kafkaParse(os.Getenv("KAFKA_CONN"))
 	if err != nil {
-		fmt.Println("kafka parse error: ", err)
+		log.Println("kafka parse error: ", err)
 	}
+
+	// get influxDB env variables
 	influxCon := os.Getenv("CONNECTOR_CONNECT_INFLUX_URL")
 	influxUser := os.Getenv("CONNECTOR_CONNECT_INFLUX_USERNAME")
 	influxPassword := os.Getenv("CONNECTOR_CONNECT_INFLUX_PASSWORD")
 
-	// creates influx client
-	c, err := client.NewHTTPClient(client.HTTPConfig{
+	// connect to couchbase
+	cbConn := &couchbase.Couchbase{} // create instance of couchbase connection
+	err = cbConn.ConnectToCB(cbEnv)  // connect to couchbase with env variables
+	if err != nil {
+		panic(fmt.Errorf("error connecting to couchbase: %v", err))
+	}
+	log.Println("Connected to Couchbase")
+
+	// connect to Kafka and create consumer
+	consumer, err := createConsumer(kafkaCon, kafkaTopic) // create instance of consumer with env variables
+	if err != nil {
+		log.Println(err)
+	}
+	log.Println("Connected to Kafka")
+
+	// create influx client with influx env variables
+	c, err := influx.NewHTTPClient(influx.HTTPConfig{
 		Addr:     influxCon,
 		Username: influxUser,
 		Password: influxPassword,
@@ -40,69 +64,37 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error connecting to influx: %v", err))
 	}
-	// defer func() {
-	// 	err = c.Close()
-	// 	if err != nil {
-	// 		fmt.Println("Closing InfluxDB Error: ", err)
-	// 	}
-	// }()
+	log.Println("Connected to InfluxDB")
 
-	//connect to couchbase
-	cbConn := &couchbase.Couchbase{} // create instance of couchbase connection
-	err = cbConn.ConnectToCB(cbEnv)  // connect to couchbase with env variables
-	if err != nil {
-		panic(fmt.Errorf("error connecting to couchbase: %v", err))
-	}
-	// close couchbase connection on return
-	// defer func() {
-	// 	err = cbConn.Bucket.Close()
-	// 	fmt.Println("Closed Couchbase")
-	// 	if err != nil {
-	// 		fmt.Println("Closing Couchbase Error: ", err)
-	// 	}
-	// }()
-
-	fmt.Println("Connected to Couchbase")
-	fmt.Println()
-
-	//connect to Kafka and create consumer
-	consumer, err := createConsumer(kafkaCon, kafkaTopic) // create instance of consumer with env variables
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	// close consumer on return
-	// defer func() {
-	// 	err = consumer.Close()
-	// 	fmt.Println("Closed Kafka")
-	// 	if err != nil {
-	// 		fmt.Println("Closing Kafka Error: ", err)
-	// 	}
-	// }()
-
-	//intialize websocket management and kafka consume
+	// intialize websocket management and kafka consume
 	// connectionManager requires maxBatchSize, minBatchSize, batchInterval (in milliseconds), truncateSize, cbConn
 	maxBatchSize := 100
 	minBatchSize := 1
 	batchInterval := 2000
 	truncateSize := 1
 
-	// listen for interrupt signal
+	// listen for service interrupt signal
 	quit := make(chan os.Signal)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	ctx, cancel := context.WithCancel(context.Background())
+
+	// create context for doppler-api service
+	ctx, cancel := context.WithCancel(context.Background()) // create a context that utilizes a Done channel, returns context and cancel function that is used to signal the Done channel
+
+	// go func that listens for signals
 	go func() {
-		<-quit
+		<-quit // service interrupt signal channel
+
 		log.Println("Interrupt Received")
-		cancel()
-		c.Close()
-		cbConn.Bucket.Close()
-		consumer.Close()
+		cancel() // send signal to Done channel
 	}()
 
 	// create an instance of our websocket service
 	connectionManager := service.NewConnectionManager(maxBatchSize, minBatchSize, batchInterval, truncateSize, cbConn)
+	log.Println("Websockets Available")
+
+	// create instance of InfluxDB service
 	influxService := service.NewInfluxService(c, truncateSize)
+	log.Println("InfluxDB Available")
 
 	// handle websocket requests
 	http.Handle("/receive/ws", connectionManager)
@@ -112,24 +104,41 @@ func main() {
 
 	// start the consumer
 	go connectionManager.Consume(ctx, consumer)
+	log.Println("Consuming Started")
 
-	// listen for calls to server
-	server := &http.Server{Addr: ":8000"}
+	// create instance of server
+	server := &http.Server{Addr: addr}
+
+	// go func that listens and serves doppler-api server
 	go func() {
+		log.Println("Serving on ", server.Addr)
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			panic(fmt.Errorf("error setting up the websocket endpoint: %v", err))
+			panic(fmt.Errorf("Error setting up the server: %v", err))
 		}
+		<-ctx.Done()
 	}()
 
-	<-ctx.Done()
-	// We received an interrupt signal, shut down.
+	<-ctx.Done() // context Done channel endpoint
+
+	// received an interrupt signal, shut down.
+	// create context for server shutdown
 	svrCtx, svrCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// shutdown server with server context
 	if err := server.Shutdown(svrCtx); err != nil {
 		// Error from closing listeners, or context timeout:
 		log.Printf("HTTP server Shutdown: %v", err)
 	}
-	defer svrCancel()
-	fmt.Println("Service Closed")
+	log.Println("Server Shutdown")
+	defer func() {
+		// close internal services
+		cbConn.Bucket.Close()
+		consumer.Close()
+		c.Close()
+		log.Println("Internal Services Closed")
+
+		svrCancel() // defer signaling server context Done channel signal
+		log.Println("Service Closed")
+	}()
 }
 
 // kafkaParse is used to parse env variables for Kafka
@@ -139,12 +148,12 @@ func kafkaParse(conn string) (string, string, error) {
 		return "", "", err
 	}
 	if u.Host == "" {
-		return "", "", errors.New("Kafka address is not specified, verify that your environment varaibles are correct")
+		return "", "", errors.New("Kafka address is not specified, verify that your environment variables are correct")
 	}
 	address := u.Host
 	// make sure that the topic is specified
 	if u.Path == "" || u.Path == "/" {
-		return "", "", errors.New("Kafka topic is not specified, verify that your environment varaibles are correct")
+		return "", "", errors.New("Kafka topic is not specified, verify that your environment variables are correct")
 	}
 	topic := u.Path[1:]
 	return address, topic, nil
@@ -172,18 +181,3 @@ func createConsumer(kafkaCon string, kafkaTopic string) (sarama.PartitionConsume
 	}
 	return consumer, nil
 }
-
-// // queries influx for all points, query is temporarily hard coded
-// influx := false
-// if influx == true {
-// 	res, err := fx.GetPoints(c, "select * from dopplerDataHistory")
-// 	if err != nil {
-// 		fmt.Println(err)
-// 	} else {
-// 		i := 0
-// 		for i < len(res.ValArray) {
-// 			fmt.Println(res.ValArray[i])
-// 			i = i + 1
-// 		}
-// 	}
-// }

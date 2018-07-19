@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"log"
 	"strings"
 
 	"github.com/Shopify/sarama"
@@ -29,24 +29,22 @@ type Point struct {
 	Lng string `json:"lng,omitempty"`
 }
 
-// Consume consumes messages from Kafka
+// Consume consumes messages from Kafka, takes in context to stop consuming on quit
 func (c *ConnectionManager) Consume(ctx context.Context, consumer sarama.PartitionConsumer) {
-	fmt.Println("Kafka Consume Started")
 
-	//continually consumes messages from Kafka
+	// continually consume messages from Kafka
 Loop:
 	for {
 		select {
 		// In case of error
 		case err := <-consumer.Errors():
-			fmt.Println(err)
-			// Print consumer messages
+			log.Println("Consuming Error: ", err)
 		case msg := <-consumer.Messages():
 			//initialize variable to hold data from kafka data
 			var kafkaData KafkaData
 			err := json.Unmarshal(msg.Value, &kafkaData) //unmarshal data to json
 			if err != nil {
-				fmt.Println(err)
+				log.Println("Unmarshal Consumer Message Error: ", err)
 			}
 			// Check if ClientID exists
 			c.mutex.RLock() // read lock connection manager per message
@@ -85,12 +83,12 @@ Loop:
 			}
 			c.mutex.RUnlock()
 		case <-ctx.Done():
+			// If receive quit signal, close consumer
 			break Loop
 		}
 	}
 
-	// If receive quit signal, close consumer
-	fmt.Println("Consumption closed")
+	log.Println("Consumption closed")
 }
 
 // updateAvailableFilters adds a new filter found in consume messages to allFilters and sends the available filters to the client
@@ -106,7 +104,7 @@ func (conn *ConnWithParameters) updateAvailableFilters(newFilter string) {
 	//send slice to client
 	err := conn.ws.WriteJSON(clientEvents)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Write Available Filters Error: ", err)
 	}
 }
 

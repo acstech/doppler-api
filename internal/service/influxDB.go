@@ -2,12 +2,13 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
-	"time"
 
-	infxHelper "github.com/acstech/doppler-api/internal/influx"
 	influx "github.com/influxdata/influxdb/client/v2"
 )
 
@@ -15,6 +16,8 @@ import (
 type InfluxService struct {
 	client              influx.Client // connection to InfluxDB
 	defaultTruncateSize int           // truncation size used in bucketing
+	db                  string        // the name of the influx database (for doppler-api: "doppler")
+	measure             string        // the measure in InfluxDB used by doppler-api
 }
 
 // request is the structure for the query's received from an ajax GET request from doppler-frontend
@@ -40,98 +43,33 @@ func NewInfluxService(client influx.Client, tSize int) *InfluxService {
 	return &InfluxService{
 		client:              client,
 		defaultTruncateSize: tSize,
+		db:                  "doppler",
+		measure:             "dopplerDataHistory",
 	}
 }
 
 // ServeHTTP handles AJAX GET Requests from doppler-frontend
 func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// get request query
-	// fmt.Println("Got Request: ", r.Host)
 	requestQuery := r.URL.Query()
 
-	// get query values
-	// get clientID
-	// check if request contains clientID
-	_, contains := requestQuery["clientID"]
-	if !contains {
-		fmt.Println("Request Missing Client ID")
+	// create new request based on ajax request values
+	request, err := c.newRequest(requestQuery)
+	if err != nil {
+		log.Println("New Request Error: ", err)
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Missing Client ID"))
+		_, err := w.Write([]byte(err.Error()))
+		if err != nil {
+			log.Println("Write AJAX Response Error Error: ", err)
+		}
 		return
-	}
-	// get clientID
-	clientID := requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
-
-	// get list of events
-	// check if request contains filters
-	_, contains = requestQuery["filters[]"]
-	if !contains {
-		fmt.Println("Request Missing Filters")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Missing Filters"))
-		return
-	}
-	// get filters
-	events := requestQuery["filters[]"] // get filters (.Query adds the "[]" to the key name)
-
-	// get start time
-	// check if request contains startTime
-	_, contains = requestQuery["startTime"]
-	if !contains {
-		fmt.Println("Request Missing Start Time")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Missing Start Time"))
-		return
-	}
-	// get startTime
-	startTime := requestQuery["startTime"][0] // get startTime (index zero since only have one ID)
-
-	// get end time
-	// check if request contains end time
-	_, contains = requestQuery["endTime"]
-	if !contains {
-		fmt.Println("Request Missing End Time")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Missing End Time"))
-		return
-	}
-	// get endTime
-	endTime := requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
-
-	// get the ajax index
-	// check if request contains index
-	_, contains = requestQuery["index"]
-	if !contains {
-		fmt.Println("Request Missing Index")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Missing Index"))
-		return
-	}
-	// // get index
-	index := requestQuery["index"][0]
-
-	// create zero test for bucketing
-	zTest := createZeroTest(c.defaultTruncateSize)
-
-	// create influxQuery instance based on r's URL query
-	request := &request{
-		clientID:  clientID,
-		events:    events,
-		startTime: startTime,
-		endTime:   endTime,
-		index:     index,
-
-		zeroTest:     zTest,
-		truncateSize: c.defaultTruncateSize,
 	}
 
 	// query InfluxDB
-	start := time.Now()
-	influxData, err := request.queryInfluxDB(c)
+	influxData, err := c.queryInfluxDB(request)
 	if err != nil {
-		fmt.Println("Query InfluxDB Error: ", err)
+		log.Println("Query InfluxDB Error: ", err)
 	}
-	fmt.Println("Query Duration: ", time.Now().Sub(start))
 
 	// bucket
 	batchMap := request.influxBucketPoints(influxData)
@@ -145,7 +83,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// marshal the response for sending
 	response, err := json.Marshal(res)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Marshal Response Error: ", err)
 	}
 
 	// set ajax response headers
@@ -154,28 +92,135 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// write response data
 	w.WriteHeader(http.StatusOK)
-	w.Write(response)
+	_, err = w.Write(response)
+	if err != nil {
+		log.Println("Write AJAX Response Error: ", err)
+	}
 }
 
-// queryInfluxDB takes an InfluxService and an ajaxQuery, creates a query string, queries InfluxDB, parses query response
-// and returns the results
-func (request *request) queryInfluxDB(c *InfluxService) ([]infxHelper.Point, error) {
+// newRequest creates an instance of a request based on the values from an AJAX GET request
+func (c *InfluxService) newRequest(requestQuery url.Values) (*request, error) {
+	// Parse Query Values
+	// get clientID
+	// check if request contains clientID
+	_, contains := requestQuery["clientID"]
+	if !contains {
+		err := errors.New("Request Missing Client ID")
+		return &request{}, err
+	}
+	// get clientID
+	clientID := requestQuery["clientID"][0] // get clientID (index zero since only have one ID)
+
+	// get list of events
+	// check if request contains filters
+	_, contains = requestQuery["filters[]"]
+	if !contains {
+		err := errors.New("Request Missing Filters")
+		return &request{}, err
+	}
+	// get filters
+	events := requestQuery["filters[]"] // get filters (.Query adds the "[]" to the key name)
+
+	// get start time
+	// check if request contains startTime
+	_, contains = requestQuery["startTime"]
+	if !contains {
+		err := errors.New("Request Missing Start Time")
+		return &request{}, err
+	}
+	// get startTime
+	startTime := requestQuery["startTime"][0] // get startTime (index zero since only have one ID)
+
+	// get end time
+	// check if request contains end time
+	_, contains = requestQuery["endTime"]
+	if !contains {
+		err := errors.New("Request Missing End Time")
+		return &request{}, err
+	}
+	// get endTime
+	endTime := requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
+
+	// get the ajax index
+	// check if request contains index
+	_, contains = requestQuery["index"]
+	if !contains {
+		err := errors.New("Request Missing Index")
+		return &request{}, err
+	}
+	// // get index
+	index := requestQuery["index"][0]
+
+	// create zero test for bucketing
+	zTest := createZeroTest(c.defaultTruncateSize)
+
+	// create request instance
+	return &request{
+		clientID:  clientID,
+		events:    events,
+		startTime: startTime,
+		endTime:   endTime,
+		index:     index,
+
+		zeroTest:     zTest,
+		truncateSize: c.defaultTruncateSize,
+	}, nil
+}
+
+// queryInfluxDB takes a request, creates a query string, queries InfluxDB, and returns the influx response
+func (c *InfluxService) queryInfluxDB(request *request) ([]Point, error) {
 	// create query string
 	q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %s AND time <= %s AND clientID='%s' AND eventID =~ /(?:%s)/", request.startTime, request.endTime, request.clientID, strings.Join(request.events, "|"))
-	// fmt.Println("Query: ", q)
-	// fmt.Println()
-	// getPoints
-	response, err := infxHelper.GetPoints(c.client, q)
+
+	// get points from influxDB
+	response, err := c.getPoints(q)
 	if err != nil {
-		fmt.Println("Influx Query Error: ", err)
+		log.Println("Influx Query Error: ", err)
 	}
 	return response, nil
 }
 
-func (request *request) influxBucketPoints(data []infxHelper.Point) map[string]Latlng {
+// getPoints takes a query string, queries influx, creates a slice of Points based on influx data, and returns the results
+func (c *InfluxService) getPoints(query string) ([]Point, error) {
+	// Create the query
+	q := influx.NewQuery(query, c.db, "ns")
 
+	// initialize slice of Points (return variable)
+	var points []Point
+
+	// Run query
+	// check if get response from InfluxDB
+	if response, err := c.client.Query(q); err == nil && response.Error() == nil {
+		// check if have any results
+		if len(response.Results[0].Series) != 0 {
+			// Get lat and lng values from response
+			data := response.Results[0].Series[0].Values
+
+			// Set length of points
+			points = make([]Point, len(data))
+
+			// Iterate through response to add values to points
+			for key := range data {
+				points[key] = Point{
+					Lat: fmt.Sprint(data[key][1]),
+					Lng: fmt.Sprint(data[key][2]),
+				}
+			}
+		}
+	} else {
+		log.Println("Query Error: ", err)
+		return nil, err
+	}
+	return points, nil
+}
+
+// influxBucketPoints takes a slice of Points, truncates each point, creates new buckets of Latlng when needed or increases the count within a Latlng when needed, returns the result
+func (request *request) influxBucketPoints(data []Point) map[string]Latlng {
+
+	// initialize map with hash as key and Latlng (a Point with a count) as value
 	batchMap := make(map[string]Latlng)
 
+	// iterate through data
 	for i := range data {
 		if len(batchMap) < 8000 {
 			// Truncate each item in batch
@@ -202,7 +247,7 @@ func (request *request) influxBucketPoints(data []infxHelper.Point) map[string]L
 			//create bucket hash
 			bucket := lat + ":" + lng
 
-			//create point
+			//create Latlng (a point with a count)
 			pt := Latlng{
 				Coords: Point{
 					Lat: lat,

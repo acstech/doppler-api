@@ -1,4 +1,4 @@
-## Doppler-Heatmap
+## Doppler-Heatmap [![Go Report Card](https://goreportcard.com/badge/github.com/acstech/doppler-api)](https://goreportcard.com/report/github.com/acstech/doppler-api)
 
 This repository contains the second API layer supporting Doppler-Heatmap.
 

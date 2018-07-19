@@ -2,7 +2,7 @@ package service
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -68,8 +68,6 @@ func NewConnectionManager(maxBS int, minBS int, batchMilli int, tSize int, cbCon
 	// create batch interval based on milliseconds that were passed in
 	bInterval := time.Duration(time.Duration(batchMilli) * time.Millisecond)
 
-	fmt.Println("Ready to Receive Websocket Requests")
-
 	// return a ConnectionManager with all parameters
 	return &ConnectionManager{
 		connections:          connections,
@@ -93,11 +91,12 @@ func (c *ConnectionManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ws.Close() //close the connection just in case
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("500 - error upgrading connection"))
+		_, err := w.Write([]byte("500 - error upgrading connection"))
+		if err != nil {
+			log.Println("Write Upgrade Error Error: ", err)
+		}
 		return
 	}
-
-	fmt.Println("NEW CONNECTION: Connection Upgraded, waiting for ClientID")
 
 	// Initialize conn with parameters
 	conn := &ConnWithParameters{
@@ -148,17 +147,17 @@ func (conn *ConnWithParameters) readWS() {
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			conn.mutex.RUnlock()
 			if err != nil {
-				fmt.Println("readWS unmarshal msg error ", err)
+				log.Println("readWS unmarshal msg error ", err)
 			}
 		}
 		// If havent been connected, initialize all connection parameters, first message has to be clientID
 		if !connected {
-			success = conn.connectionManager.registerConn(conn, message) //initilaize the connection with parameters, return the intilailized connection and if the initialization was succesful
+			success = conn.connectionManager.registerConn(conn, message) //initilaize the connection with parameters, return the intilailized connection and if the initialization was successful
 			if success {
 				// update connected to true
 				connected = true
 				// start checking if need to flush batch but iff no other checking has started
-				if len(conn.connectionManager.connections) == 1 && conn.connectionManager.intervalFlushStarted == false {
+				if len(conn.connectionManager.connections) == 1 && !conn.connectionManager.intervalFlushStarted {
 					conn.connectionManager.intervalFlushStarted = true // update connection manager interval flush start
 					go conn.connectionManager.intervalFlush()          // start interval flushing
 				}
@@ -199,7 +198,6 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 	}
 	// add conn to clients' map of connections
 	c.connections[conn.clientID][conn] = struct{}{}
-	fmt.Println("Added Conn", c.connections)
 
 	// CHECK COUCHBASE for client's data
 	// check if client exists in couchbase
@@ -209,19 +207,19 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 			conn.ConnErr.Err = "501: Unable to validate clientID"
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 			}
 		} else if err == gocb.ErrBusy {
 			conn.ConnErr.Err = "502: Unable to validate clientID"
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 			}
 		} else {
 			conn.ConnErr.Err = "503: Unable to validate clientID"
 			err = conn.ws.WriteJSON(conn.ConnErr)
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 			}
 		}
 		return false // registering not successful
@@ -240,20 +238,20 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 		// send event options to client
 		err = conn.ws.WriteJSON(clientEvents)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		}
 	} else {
 		// if clientID does not exist in couchbase
 		conn.ConnErr.Err = "401: The ClientID is not valid"
 		err = conn.ws.WriteJSON(conn.ConnErr)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		}
 
 		return false // registering not successful
 	}
 
-	// initlize zero test for bucketing based on conneciton manager default truncation size
+	// initlize zero test for bucketing based on connection manager default truncation size
 	conn.zeroTest = createZeroTest(conn.connectionManager.defaultTruncateSize)
 
 	return true // register successful
@@ -270,7 +268,6 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 		conn.mutex.RUnlock()
 	}()
 
-	fmt.Println("Connection Closed by Client")
 	// REMOVE FROM MAP
 	delete(c.connections[conn.clientID], conn) // delete specific connection
 
@@ -278,7 +275,6 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 	if len(c.connections[conn.clientID]) == 0 {
 		delete(c.connections, conn.clientID)
 	}
-	fmt.Println("Removed Conn: ", c.connections)
 }
 
 // updateActiveFilters removes the current filters and sets filter equal to the new filters found in the message
@@ -310,7 +306,7 @@ func (c *ConnectionManager) intervalFlush() {
 				// see if current time minus last flush time is greater than or equal to the set interval
 				// sub returns type Duration, batchInterval is of type Duration
 				conn.mutex.Lock()
-				if time.Now().Sub(conn.flushTime) >= c.batchInterval {
+				if time.Since(conn.flushTime) >= c.batchInterval {
 					if len(conn.batchMap) >= c.minBatchSize {
 						conn.flush()
 						conn.flushTime = time.Now()
@@ -327,13 +323,12 @@ func (c *ConnectionManager) intervalFlush() {
 func (conn *ConnWithParameters) flush() {
 	batch, marshalErr := json.Marshal(conn.batchMap) // marshal to type BatchStruct
 	if marshalErr != nil {
-		fmt.Println("batch marshal error")
-		fmt.Println(marshalErr)
+		log.Println("batch marshal error", marshalErr)
 	}
 
 	writeErr := conn.ws.WriteJSON(string(batch)) // send batch to client
 	if writeErr != nil {
-		fmt.Println(writeErr)
+		log.Println("Connection Write Batch Error: ", writeErr)
 	}
 	conn.batchMap = make(map[string]Latlng) // empty batch
 }
