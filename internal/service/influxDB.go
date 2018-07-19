@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,13 +51,13 @@ func NewInfluxService(client influx.Client, tSize int) *InfluxService {
 // ServeHTTP handles AJAX GET Requests from doppler-frontend
 func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// get request query
-	fmt.Println("Got Request: ", r.Host)
+	log.Println("Got Request: ", r.Host)
 	requestQuery := r.URL.Query()
 
 	// create new request based on ajax request values
 	request, err := c.newRequest(requestQuery)
 	if err != nil {
-		fmt.Println("New Request Error: ", err)
+		log.Println("New Request Error: ", err)
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
 		return
@@ -65,7 +66,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// query InfluxDB
 	influxData, err := c.queryInfluxDB(request)
 	if err != nil {
-		fmt.Println("Query InfluxDB Error: ", err)
+		log.Println("Query InfluxDB Error: ", err)
 	}
 
 	// bucket
@@ -80,7 +81,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// marshal the response for sending
 	response, err := json.Marshal(res)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Marshal Response Error: ", err)
 	}
 
 	// set ajax response headers
@@ -169,7 +170,7 @@ func (c *InfluxService) queryInfluxDB(request *request) ([]Point, error) {
 	// get points from influxDB
 	response, err := c.getPoints(q)
 	if err != nil {
-		fmt.Println("Influx Query Error: ", err)
+		log.Println("Influx Query Error: ", err)
 	}
 	return response, nil
 }
@@ -202,7 +203,7 @@ func (c *InfluxService) getPoints(query string) ([]Point, error) {
 			}
 		}
 	} else {
-		fmt.Println("Query Error: ", err)
+		log.Println("Query Error: ", err)
 		return nil, err
 	}
 	return points, nil

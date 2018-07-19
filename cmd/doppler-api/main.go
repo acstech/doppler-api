@@ -28,7 +28,7 @@ func main() {
 	// get and parse kafka env variables
 	kafkaCon, kafkaTopic, err := kafkaParse(os.Getenv("KAFKA_CONN"))
 	if err != nil {
-		fmt.Println("kafka parse error: ", err)
+		log.Println("kafka parse error: ", err)
 	}
 
 	// get influxDB env variables
@@ -42,14 +42,14 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error connecting to couchbase: %v", err))
 	}
-	fmt.Println("Connected to Couchbase")
+	log.Println("Connected to Couchbase")
 
 	//connect to Kafka and create consumer
 	consumer, err := createConsumer(kafkaCon, kafkaTopic) // create instance of consumer with env variables
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
-	fmt.Println("Connected to Kafka")
+	log.Println("Connected to Kafka")
 
 	// creates influx client
 	c, err := influx.NewHTTPClient(influx.HTTPConfig{
@@ -60,8 +60,8 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error connecting to influx: %v", err))
 	}
-	fmt.Println("Connected to InfluxDB")
-	fmt.Println()
+	log.Println("Connected to InfluxDB")
+	log.Println()
 
 	// intialize websocket management and kafka consume
 	// connectionManager requires maxBatchSize, minBatchSize, batchInterval (in milliseconds), truncateSize, cbConn
@@ -79,7 +79,7 @@ func main() {
 
 	// go func that listens for signals
 	go func() {
-		<-quit // signal channel
+		<-quit // service interrupt signal channel
 
 		log.Println("Interrupt Received")
 		cancel() // send signal to Done channel
@@ -88,7 +88,7 @@ func main() {
 		cbConn.Bucket.Close()
 		consumer.Close()
 		c.Close()
-		fmt.Println("Internal Services Closed")
+		log.Println("Internal Services Closed")
 	}()
 
 	// create an instance of our websocket service
@@ -125,7 +125,7 @@ func main() {
 		log.Printf("HTTP server Shutdown: %v", err)
 	}
 	defer svrCancel() // defer signaling server context Done channel signal
-	fmt.Println("Service Closed")
+	log.Println("Service Closed")
 }
 
 // kafkaParse is used to parse env variables for Kafka
