@@ -29,7 +29,7 @@ type Point struct {
 	Lng string `json:"lng,omitempty"`
 }
 
-// Consume consumes messages from Kafka
+// Consume consumes messages from Kafka, takes in context to stop consuming on quit
 func (c *ConnectionManager) Consume(ctx context.Context, consumer sarama.PartitionConsumer) {
 	fmt.Println("Kafka Consume Started")
 
