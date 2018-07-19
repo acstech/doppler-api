@@ -153,7 +153,7 @@ func (conn *ConnWithParameters) readWS() {
 		}
 		// If havent been connected, initialize all connection parameters, first message has to be clientID
 		if !connected {
-			success = conn.connectionManager.registerConn(conn, message) //initilaize the connection with parameters, return the intilailized connection and if the initialization was succesful
+			success = conn.connectionManager.registerConn(conn, message) //initilaize the connection with parameters, return the intilailized connection and if the initialization was successful
 			if success {
 				// update connected to true
 				connected = true
@@ -253,7 +253,7 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 		return false // registering not successful
 	}
 
-	// initlize zero test for bucketing based on conneciton manager default truncation size
+	// initlize zero test for bucketing based on connection manager default truncation size
 	conn.zeroTest = createZeroTest(conn.connectionManager.defaultTruncateSize)
 
 	return true // register successful

@@ -13,7 +13,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/acstech/doppler-api/internal/couchbase"
 	"github.com/acstech/doppler-api/internal/service"
-	client "github.com/influxdata/influxdb/client/v2"
+	influx "github.com/influxdata/influxdb/client/v2"
 	_ "github.com/joho/godotenv/autoload"
 )
 
@@ -30,7 +30,7 @@ func main() {
 	influxPassword := os.Getenv("CONNECTOR_CONNECT_INFLUX_PASSWORD")
 
 	// creates influx client
-	c, err := client.NewHTTPClient(client.HTTPConfig{
+	c, err := influx.NewHTTPClient(influx.HTTPConfig{
 		Addr:     influxCon,
 		Username: influxUser,
 		Password: influxPassword,
@@ -126,12 +126,12 @@ func kafkaParse(conn string) (string, string, error) {
 		return "", "", err
 	}
 	if u.Host == "" {
-		return "", "", errors.New("Kafka address is not specified, verify that your environment varaibles are correct")
+		return "", "", errors.New("Kafka address is not specified, verify that your environment variables are correct")
 	}
 	address := u.Host
 	// make sure that the topic is specified
 	if u.Path == "" || u.Path == "/" {
-		return "", "", errors.New("Kafka topic is not specified, verify that your environment varaibles are correct")
+		return "", "", errors.New("Kafka topic is not specified, verify that your environment variables are correct")
 	}
 	topic := u.Path[1:]
 	return address, topic, nil
