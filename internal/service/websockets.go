@@ -91,7 +91,10 @@ func (c *ConnectionManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ws.Close() //close the connection just in case
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("500 - error upgrading connection"))
+		_, err := w.Write([]byte("500 - error upgrading connection"))
+		if err != nil {
+			log.Println("Write Upgrade Error Error: ", err)
+		}
 		return
 	}
 
@@ -154,7 +157,7 @@ func (conn *ConnWithParameters) readWS() {
 				// update connected to true
 				connected = true
 				// start checking if need to flush batch but iff no other checking has started
-				if len(conn.connectionManager.connections) == 1 && conn.connectionManager.intervalFlushStarted == false {
+				if len(conn.connectionManager.connections) == 1 && !conn.connectionManager.intervalFlushStarted {
 					conn.connectionManager.intervalFlushStarted = true // update connection manager interval flush start
 					go conn.connectionManager.intervalFlush()          // start interval flushing
 				}
@@ -303,7 +306,7 @@ func (c *ConnectionManager) intervalFlush() {
 				// see if current time minus last flush time is greater than or equal to the set interval
 				// sub returns type Duration, batchInterval is of type Duration
 				conn.mutex.Lock()
-				if time.Now().Sub(conn.flushTime) >= c.batchInterval {
+				if time.Since(conn.flushTime) >= c.batchInterval {
 					if len(conn.batchMap) >= c.minBatchSize {
 						conn.flush()
 						conn.flushTime = time.Now()

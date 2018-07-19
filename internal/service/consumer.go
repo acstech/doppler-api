@@ -31,9 +31,8 @@ type Point struct {
 
 // Consume consumes messages from Kafka, takes in context to stop consuming on quit
 func (c *ConnectionManager) Consume(ctx context.Context, consumer sarama.PartitionConsumer) {
-	log.Println("Kafka Consume Started")
 
-	//continually consumes messages from Kafka
+	// continually consume messages from Kafka
 Loop:
 	for {
 		select {

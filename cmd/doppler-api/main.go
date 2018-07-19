@@ -19,10 +19,14 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 )
 
+const (
+	addr = ":8000" // address for server
+)
+
 func main() {
 
 	// get environment variables
-	// get couchbase connection
+	// get couchbase env variables
 	cbEnv := os.Getenv("COUCHBASE_CONN")
 
 	// get and parse kafka env variables
@@ -36,7 +40,7 @@ func main() {
 	influxUser := os.Getenv("CONNECTOR_CONNECT_INFLUX_USERNAME")
 	influxPassword := os.Getenv("CONNECTOR_CONNECT_INFLUX_PASSWORD")
 
-	//connect to couchbase
+	// connect to couchbase
 	cbConn := &couchbase.Couchbase{} // create instance of couchbase connection
 	err = cbConn.ConnectToCB(cbEnv)  // connect to couchbase with env variables
 	if err != nil {
@@ -44,14 +48,14 @@ func main() {
 	}
 	log.Println("Connected to Couchbase")
 
-	//connect to Kafka and create consumer
+	// connect to Kafka and create consumer
 	consumer, err := createConsumer(kafkaCon, kafkaTopic) // create instance of consumer with env variables
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println("Connected to Kafka")
 
-	// creates influx client
+	// create influx client with influx env variables
 	c, err := influx.NewHTTPClient(influx.HTTPConfig{
 		Addr:     influxCon,
 		Username: influxUser,
@@ -61,7 +65,6 @@ func main() {
 		panic(fmt.Errorf("error connecting to influx: %v", err))
 	}
 	log.Println("Connected to InfluxDB")
-	log.Println()
 
 	// intialize websocket management and kafka consume
 	// connectionManager requires maxBatchSize, minBatchSize, batchInterval (in milliseconds), truncateSize, cbConn
@@ -87,7 +90,11 @@ func main() {
 
 	// create an instance of our websocket service
 	connectionManager := service.NewConnectionManager(maxBatchSize, minBatchSize, batchInterval, truncateSize, cbConn)
+	log.Println("Websockets Available")
+
+	// create instance of InfluxDB service
 	influxService := service.NewInfluxService(c, truncateSize)
+	log.Println("InfluxDB Available")
 
 	// handle websocket requests
 	http.Handle("/receive/ws", connectionManager)
@@ -97,14 +104,16 @@ func main() {
 
 	// start the consumer
 	go connectionManager.Consume(ctx, consumer)
+	log.Println("Consuming Started")
 
 	// create instance of server
-	server := &http.Server{Addr: ":8000"}
+	server := &http.Server{Addr: addr}
 
 	// go func that listens and serves doppler-api server
 	go func() {
+		log.Println("Serving on ", server.Addr)
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			panic(fmt.Errorf("error setting up the websocket endpoint: %v", err))
+			panic(fmt.Errorf("Error setting up the server: %v", err))
 		}
 		<-ctx.Done()
 	}()

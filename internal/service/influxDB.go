@@ -58,7 +58,10 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println("New Request Error: ", err)
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		_, err := w.Write([]byte(err.Error()))
+		if err != nil {
+			log.Println("Write AJAX Response Error Error: ", err)
+		}
 		return
 	}
 
@@ -89,7 +92,10 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// write response data
 	w.WriteHeader(http.StatusOK)
-	w.Write(response)
+	_, err = w.Write(response)
+	if err != nil {
+		log.Println("Write AJAX Response Error: ", err)
+	}
 }
 
 // newRequest creates an instance of a request based on the values from an AJAX GET request
