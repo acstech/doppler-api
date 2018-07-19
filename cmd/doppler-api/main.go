@@ -83,12 +83,6 @@ func main() {
 
 		log.Println("Interrupt Received")
 		cancel() // send signal to Done channel
-
-		// close internal services
-		cbConn.Bucket.Close()
-		consumer.Close()
-		c.Close()
-		log.Println("Internal Services Closed")
 	}()
 
 	// create an instance of our websocket service
@@ -112,6 +106,7 @@ func main() {
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
 			panic(fmt.Errorf("error setting up the websocket endpoint: %v", err))
 		}
+		<-ctx.Done()
 	}()
 
 	<-ctx.Done() // context Done channel endpoint
@@ -124,8 +119,17 @@ func main() {
 		// Error from closing listeners, or context timeout:
 		log.Printf("HTTP server Shutdown: %v", err)
 	}
-	defer svrCancel() // defer signaling server context Done channel signal
-	log.Println("Service Closed")
+	log.Println("Server Shutdown")
+	defer func() {
+		// close internal services
+		cbConn.Bucket.Close()
+		consumer.Close()
+		c.Close()
+		log.Println("Internal Services Closed")
+
+		svrCancel() // defer signaling server context Done channel signal
+		log.Println("Service Closed")
+	}()
 }
 
 // kafkaParse is used to parse env variables for Kafka
