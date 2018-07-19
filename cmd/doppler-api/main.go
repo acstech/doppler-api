@@ -20,11 +20,16 @@ import (
 func main() {
 
 	// get environment variables
+	// get couchbase connection
 	cbEnv := os.Getenv("COUCHBASE_CONN")
+
+	// get and parse kafka env variables
 	kafkaCon, kafkaTopic, err := kafkaParse(os.Getenv("KAFKA_CONN"))
 	if err != nil {
 		fmt.Println("kafka parse error: ", err)
 	}
+
+	// get influxDB env variables
 	influxCon := os.Getenv("CONNECTOR_CONNECT_INFLUX_URL")
 	influxUser := os.Getenv("CONNECTOR_CONNECT_INFLUX_USERNAME")
 	influxPassword := os.Getenv("CONNECTOR_CONNECT_INFLUX_PASSWORD")
