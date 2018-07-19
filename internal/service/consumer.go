@@ -40,7 +40,6 @@ Loop:
 		// In case of error
 		case err := <-consumer.Errors():
 			log.Println("Consuming Error: ", err)
-			// Print consumer messages
 		case msg := <-consumer.Messages():
 			//initialize variable to hold data from kafka data
 			var kafkaData KafkaData
@@ -85,11 +84,11 @@ Loop:
 			}
 			c.mutex.RUnlock()
 		case <-ctx.Done():
+			// If receive quit signal, close consumer
 			break Loop
 		}
 	}
 
-	// If receive quit signal, close consumer
 	log.Println("Consumption closed")
 }
 

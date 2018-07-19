@@ -68,8 +68,6 @@ func NewConnectionManager(maxBS int, minBS int, batchMilli int, tSize int, cbCon
 	// create batch interval based on milliseconds that were passed in
 	bInterval := time.Duration(time.Duration(batchMilli) * time.Millisecond)
 
-	log.Println("Ready to Receive Websocket Requests")
-
 	// return a ConnectionManager with all parameters
 	return &ConnectionManager{
 		connections:          connections,
@@ -96,8 +94,6 @@ func (c *ConnectionManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("500 - error upgrading connection"))
 		return
 	}
-
-	log.Println("NEW CONNECTION: Connection Upgraded, waiting for ClientID")
 
 	// Initialize conn with parameters
 	conn := &ConnWithParameters{
@@ -199,7 +195,6 @@ func (c *ConnectionManager) registerConn(conn *ConnWithParameters, message msg) 
 	}
 	// add conn to clients' map of connections
 	c.connections[conn.clientID][conn] = struct{}{}
-	log.Println("Added Conn", c.connections)
 
 	// CHECK COUCHBASE for client's data
 	// check if client exists in couchbase
@@ -270,7 +265,6 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 		conn.mutex.RUnlock()
 	}()
 
-	log.Println("Connection Closed by Client")
 	// REMOVE FROM MAP
 	delete(c.connections[conn.clientID], conn) // delete specific connection
 
@@ -278,7 +272,6 @@ func (c *ConnectionManager) unregisterConn(conn *ConnWithParameters) {
 	if len(c.connections[conn.clientID]) == 0 {
 		delete(c.connections, conn.clientID)
 	}
-	log.Println("Removed Conn: ", c.connections)
 }
 
 // updateActiveFilters removes the current filters and sets filter equal to the new filters found in the message

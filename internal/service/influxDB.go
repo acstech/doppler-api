@@ -51,7 +51,6 @@ func NewInfluxService(client influx.Client, tSize int) *InfluxService {
 // ServeHTTP handles AJAX GET Requests from doppler-frontend
 func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// get request query
-	log.Println("Got Request: ", r.Host)
 	requestQuery := r.URL.Query()
 
 	// create new request based on ajax request values
