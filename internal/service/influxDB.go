@@ -262,56 +262,52 @@ func (request *request) influxBucketPoints(data []Point) map[string]Latlng {
 
 	// iterate through data
 	for i := range data {
-		if len(batchMap) < 8000 {
-			// Truncate each item in batch
-			// Split float by decimal
-			latSlice := strings.SplitAfter(data[i].Lat, ".")
-			lngSlice := strings.SplitAfter(data[i].Lng, ".")
+		// Truncate each item in batch
+		// Split float by decimal
+		latSlice := strings.SplitAfter(data[i].Lat, ".")
+		lngSlice := strings.SplitAfter(data[i].Lng, ".")
 
-			// Truncate second half of slices
-			latSlice[1] = truncate(latSlice[1], request.truncateSize)
-			lngSlice[1] = truncate(lngSlice[1], request.truncateSize)
+		// Truncate second half of slices
+		latSlice[1] = truncate(latSlice[1], request.truncateSize)
+		lngSlice[1] = truncate(lngSlice[1], request.truncateSize)
 
-			//check for truncating edge case
-			if strings.Contains(latSlice[0], "-0.") {
-				latSlice = checkZero(latSlice, request.zeroTest)
-			}
-			if strings.Contains(lngSlice[0], "-0.") {
-				lngSlice = checkZero(lngSlice, request.zeroTest)
-			}
+		//check for truncating edge case
+		if strings.Contains(latSlice[0], "-0.") {
+			latSlice = checkZero(latSlice, request.zeroTest)
+		}
+		if strings.Contains(lngSlice[0], "-0.") {
+			lngSlice = checkZero(lngSlice, request.zeroTest)
+		}
 
-			// Combine the split strings together
-			lat := strings.Join(latSlice, "")
-			lng := strings.Join(lngSlice, "")
+		// Combine the split strings together
+		lat := strings.Join(latSlice, "")
+		lng := strings.Join(lngSlice, "")
 
-			//create bucket hash
-			bucket := lat + ":" + lng
+		//create bucket hash
+		bucket := lat + ":" + lng
 
-			//create Latlng (a point with a count)
-			pt := Latlng{
-				Coords: Point{
-					Lat: lat,
-					Lng: lng,
-				},
-				Count: 1,
-			}
+		//create Latlng (a point with a count)
+		pt := Latlng{
+			Coords: Point{
+				Lat: lat,
+				Lng: lng,
+			},
+			Count: 1,
+		}
 
-			// Bucketing
-			// check if bucket exists
-			// if it does exists, increase the count
-			_, contains := batchMap[bucket]
-			if contains {
-				value := batchMap[bucket] //get the value of the bucket
+		// Bucketing
+		// check if bucket exists
+		// if it does exists, increase the count
+		_, contains := batchMap[bucket]
+		if contains {
+			value := batchMap[bucket] //get the value of the bucket
 
-				value.Count++ //increase the count
+			value.Count++ //increase the count
 
-				batchMap[bucket] = value //add the new count to the point
+			batchMap[bucket] = value //add the new count to the point
 
-			} else { //otherwise, add the point with the count
-				batchMap[bucket] = pt
-			}
-		} else {
-			break
+		} else { //otherwise, add the point with the count
+			batchMap[bucket] = pt
 		}
 	}
 	return batchMap
