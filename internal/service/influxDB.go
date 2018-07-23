@@ -135,7 +135,7 @@ func (c *InfluxService) newRequest(requestQuery url.Values) (*request, error) {
 	if err != nil {
 		log.Println("Parse Start Time Error: ", err)
 	}
-	startTime := secs / 1000000000 // convert seconds to nanoseconds
+	startTime := secs * 1000000000 // convert seconds to nanoseconds
 
 	// get end time
 	// check if request contains end time
@@ -150,7 +150,7 @@ func (c *InfluxService) newRequest(requestQuery url.Values) (*request, error) {
 	if err != nil {
 		log.Println("Parse Start Time Error: ", err)
 	}
-	endTime := secs / 1000000000 // convert seconds to nanoseconds
+	endTime := secs * 1000000000 // convert seconds to nanoseconds
 
 	// get the ajax index
 	// check if request contains index
