@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	influx "github.com/influxdata/influxdb/client/v2"
@@ -24,8 +25,8 @@ type InfluxService struct {
 type request struct {
 	clientID  string   // clientID of ajax request
 	events    []string // slice of event filters
-	startTime string   // Unix start time
-	endTime   string   // Unix end time
+	startTime int      // Unix start time
+	endTime   int      // Unix end time
 	index     string   // the index of the ajax request
 
 	truncateSize int    // int uesd to determine how much points are truncated during bucketing
@@ -58,7 +59,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println("New Request Error: ", err)
 		w.WriteHeader(http.StatusBadRequest)
-		_, err := w.Write([]byte(err.Error()))
+		_, err = w.Write([]byte(err.Error()))
 		if err != nil {
 			log.Println("Write AJAX Response Error Error: ", err)
 		}
@@ -129,17 +130,27 @@ func (c *InfluxService) newRequest(requestQuery url.Values) (*request, error) {
 		return &request{}, err
 	}
 	// get startTime
-	startTime := requestQuery["startTime"][0] // get startTime (index zero since only have one ID)
+	stringSec := requestQuery["startTime"][0] // get startTime as string of seconds (index zero since only have one ID)
+	secs, err := strconv.Atoi(stringSec)      // convert string to int
+	if err != nil {
+		log.Println("Parse Start Time Error: ", err)
+	}
+	startTime := secs / 1000000000 // convert seconds to nanoseconds
 
 	// get end time
 	// check if request contains end time
 	_, contains = requestQuery["endTime"]
 	if !contains {
-		err := errors.New("Request Missing End Time")
+		err = errors.New("Request Missing End Time")
 		return &request{}, err
 	}
 	// get endTime
-	endTime := requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
+	stringSec = requestQuery["endTime"][0] // get endTime as string of seconds (index zero since only have one ID)
+	secs, err = strconv.Atoi(stringSec)    // convert string to int
+	if err != nil {
+		log.Println("Parse Start Time Error: ", err)
+	}
+	endTime := secs / 1000000000 // convert seconds to nanoseconds
 
 	// get the ajax index
 	// check if request contains index
@@ -170,27 +181,55 @@ func (c *InfluxService) newRequest(requestQuery url.Values) (*request, error) {
 // queryInfluxDB takes a request, creates a query string, queries InfluxDB, and returns the influx response
 func (c *InfluxService) queryInfluxDB(request *request) ([]Point, error) {
 	// create query string
-	q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %s AND time <= %s AND clientID='%s' AND eventID =~ /(?:%s)/", request.startTime, request.endTime, request.clientID, strings.Join(request.events, "|"))
+
+	// simipler but less secure query creation
+	// q := fmt.Sprintf("SELECT lat,lng FROM dopplerDataHistory WHERE time >= %s AND time <= %s AND clientID='%s' AND eventID =~ /(?:%s)/", request.startTime, request.endTime, request.clientID, strings.Join(request.events, "|"))
+
+	// initialize query string without events
+	q := "SELECT lat,lng FROM dopplerDataHistory WHERE time >= $startTime AND time <= $endTime AND clientID = $clientID AND ("
+
+	// initialize parameters without events
+	parameters := map[string]interface{}{
+		"startTime": request.startTime, // time as int
+		"endTime":   request.endTime,   // time as int
+		"clientID":  request.clientID,  // clientID as string
+	}
+
+	// add eventID statements to query string
+	// append eventID = $event[index] to query string and add events to parameters (regex wasnt working with binding parameters)
+	for index, value := range request.events {
+		// check if on last value in events map
+		if index+1 == len(request.events) {
+			eventID := fmt.Sprint("event", index)           // create a unique event parameter
+			q = q + fmt.Sprint("eventID = $", eventID, ")") // concat eventID with placeholder and closing )
+			parameters[eventID] = value                     // add eventID as string to parameters
+			continue                                        // skip rest of loop
+		}
+
+		eventID := fmt.Sprint("event", index)              // create a unique event parameter
+		q = q + fmt.Sprint("eventID = $", eventID, " OR ") // concat eventID with placeholder
+		parameters[eventID] = value                        // add eventID as string to parameters
+	}
+
+	// create influxDB query
+	query := influx.NewQueryWithParameters(q, c.db, "ns", parameters)
 
 	// get points from influxDB
-	response, err := c.getPoints(q)
+	response, err := c.getPoints(query)
 	if err != nil {
 		log.Println("Influx Query Error: ", err)
 	}
 	return response, nil
 }
 
-// getPoints takes a query string, queries influx, creates a slice of Points based on influx data, and returns the results
-func (c *InfluxService) getPoints(query string) ([]Point, error) {
-	// Create the query
-	q := influx.NewQuery(query, c.db, "ns")
-
+// getPoints takes an influx.Query, queries influx, creates a slice of Points based on influx data, and returns the results
+func (c *InfluxService) getPoints(query influx.Query) ([]Point, error) {
 	// initialize slice of Points (return variable)
 	var points []Point
 
 	// Run query
 	// check if get response from InfluxDB
-	if response, err := c.client.Query(q); err == nil && response.Error() == nil {
+	if response, err := c.client.Query(query); err == nil && response.Error() == nil {
 		// check if have any results
 		if len(response.Results[0].Series) != 0 {
 			// Get lat and lng values from response
@@ -209,6 +248,7 @@ func (c *InfluxService) getPoints(query string) ([]Point, error) {
 		}
 	} else {
 		log.Println("Query Error: ", err)
+		log.Println("Influx Response: ", response)
 		return nil, err
 	}
 	return points, nil
