@@ -25,8 +25,8 @@ type InfluxService struct {
 type request struct {
 	clientID  string   // clientID of ajax request
 	events    []string // slice of event filters
-	startTime string   // Unix start time
-	endTime   string   // Unix end time
+	startTime int      // Unix start time
+	endTime   int      // Unix end time
 	index     string   // the index of the ajax request
 
 	truncateSize int    // int uesd to determine how much points are truncated during bucketing
@@ -59,7 +59,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println("New Request Error: ", err)
 		w.WriteHeader(http.StatusBadRequest)
-		_, err := w.Write([]byte(err.Error()))
+		_, err = w.Write([]byte(err.Error()))
 		if err != nil {
 			log.Println("Write AJAX Response Error Error: ", err)
 		}
@@ -130,17 +130,27 @@ func (c *InfluxService) newRequest(requestQuery url.Values) (*request, error) {
 		return &request{}, err
 	}
 	// get startTime
-	startTime := requestQuery["startTime"][0] // get startTime (index zero since only have one ID)
+	stringSec := requestQuery["startTime"][0] // get startTime as string of seconds (index zero since only have one ID)
+	secs, err := strconv.Atoi(stringSec)      // convert string to int
+	if err != nil {
+		log.Println("Parse Start Time Error: ", err)
+	}
+	startTime := secs / 1000000000 // convert seconds to nanoseconds
 
 	// get end time
 	// check if request contains end time
 	_, contains = requestQuery["endTime"]
 	if !contains {
-		err := errors.New("Request Missing End Time")
+		err = errors.New("Request Missing End Time")
 		return &request{}, err
 	}
 	// get endTime
-	endTime := requestQuery["endTime"][0] // get endTime (index zero since only have one ID)
+	stringSec = requestQuery["endTime"][0] // get endTime as string of seconds (index zero since only have one ID)
+	secs, err = strconv.Atoi(stringSec)    // convert string to int
+	if err != nil {
+		log.Println("Parse Start Time Error: ", err)
+	}
+	endTime := secs / 1000000000 // convert seconds to nanoseconds
 
 	// get the ajax index
 	// check if request contains index
@@ -178,21 +188,11 @@ func (c *InfluxService) queryInfluxDB(request *request) ([]Point, error) {
 	// initialize query string without events
 	q := "SELECT lat,lng FROM dopplerDataHistory WHERE time >= $startTime AND time <= $endTime AND clientID = $clientID AND ("
 
-	// convert string of time to int of time for influx (gives error otherwise)
-	sTime, err := strconv.Atoi(request.startTime)
-	if err != nil {
-		fmt.Println("sTime strconv Error: ", err)
-	}
-	eTime, err := strconv.Atoi(request.endTime)
-	if err != nil {
-		fmt.Println("eTime strconv Error: ", err)
-	}
-
 	// initialize parameters without events
 	parameters := map[string]interface{}{
-		"startTime": sTime,            // time as int
-		"endTime":   eTime,            // time as int
-		"clientID":  request.clientID, // clientID as string
+		"startTime": request.startTime, // time as int
+		"endTime":   request.endTime,   // time as int
+		"clientID":  request.clientID,  // clientID as string
 	}
 
 	// add eventID statements to query string
