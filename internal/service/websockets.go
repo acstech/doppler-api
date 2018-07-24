@@ -66,7 +66,7 @@ func NewConnectionManager(maxBS int, minBS int, batchMilli int, tSize int, cbCon
 		},
 	}
 	// create batch interval based on milliseconds that were passed in
-	bInterval := time.Duration(time.Duration(batchMilli) * time.Millisecond)
+	bInterval := time.Duration(batchMilli) * time.Millisecond
 
 	// return a ConnectionManager with all parameters
 	return &ConnectionManager{
