@@ -33,7 +33,7 @@ type request struct {
 	zeroTest     string // string used to compare to handle truncation edge case
 }
 
-// response is the structure for the reponse to a ajax request
+// response is the structure for the response to a ajax request
 type response struct {
 	Index string            // represents the index of the ajax call
 	Batch map[string]Latlng // the batch of points for the ajax call
@@ -67,10 +67,7 @@ func (c *InfluxService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// query InfluxDB
-	influxData, err := c.queryInfluxDB(request)
-	if err != nil {
-		log.Println("Query InfluxDB Error: ", err)
-	}
+	influxData := c.queryInfluxDB(request)
 
 	// bucket
 	batchMap := request.influxBucketPoints(influxData)
@@ -179,7 +176,7 @@ func (c *InfluxService) newRequest(requestQuery url.Values) (*request, error) {
 }
 
 // queryInfluxDB takes a request, creates a query string, queries InfluxDB, and returns the influx response
-func (c *InfluxService) queryInfluxDB(request *request) ([]Point, error) {
+func (c *InfluxService) queryInfluxDB(request *request) []Point {
 	// create query string
 
 	// simipler but less secure query creation
@@ -219,7 +216,7 @@ func (c *InfluxService) queryInfluxDB(request *request) ([]Point, error) {
 	if err != nil {
 		log.Println("Influx Query Error: ", err)
 	}
-	return response, nil
+	return response
 }
 
 // getPoints takes an influx.Query, queries influx, creates a slice of Points based on influx data, and returns the results
